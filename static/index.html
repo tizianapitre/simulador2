@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Simulador 1D Autónomo</title>
+    <link rel="stylesheet" href="/static/styles.css?v=3" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <aside class="sidebar" aria-label="Controles del simulador">
+        <div class="brand">
+          <span class="brand-mark">x′</span>
+          <div>
+            <h1>Simulador 1D autónomo</h1>
+            <p>Sistemas x′ = f(x, r)</p>
+          </div>
+        </div>
+
+        <section class="panel">
+          <h2>Modelo</h2>
+          <label class="field">
+            <span>Tipo</span>
+            <select id="modelSelect"></select>
+          </label>
+          <label class="field">
+            <span>f(x, r)</span>
+            <input id="expressionInput" spellcheck="false" autocomplete="off" />
+          </label>
+          <label class="field">
+            <span>r actual</span>
+            <input id="parameterInput" type="number" step="0.05" />
+          </label>
+          <input id="parameterSlider" class="range" type="range" step="0.01" />
+          <div class="transport">
+            <div class="transport-buttons">
+              <button id="playPauseButton" class="icon-button play-button" type="button" aria-label="Reproducir animacion" title="Reproducir">&#9654;</button>
+              <button id="restartButton" class="icon-button restart-button" type="button" aria-label="Reiniciar animacion" title="Reiniciar">&#8634;</button>
+            </div>
+            <label class="field compact-field">
+              <span>Velocidad</span>
+              <select id="speedSelect">
+                <option value="12">Lenta</option>
+                <option value="8" selected>Media</option>
+                <option value="4">Rapida</option>
+              </select>
+            </label>
+          </div>
+          <button id="analyzeButton" type="button">Analizar</button>
+        </section>
+
+        <section class="panel">
+          <h2>Rangos</h2>
+          <div class="two-col">
+            <label class="field">
+              <span>x min</span>
+              <input id="xMinInput" type="number" step="0.25" />
+            </label>
+            <label class="field">
+              <span>x max</span>
+              <input id="xMaxInput" type="number" step="0.25" />
+            </label>
+            <label class="field">
+              <span>r min</span>
+              <input id="rMinInput" type="number" step="0.25" />
+            </label>
+            <label class="field">
+              <span>r max</span>
+              <input id="rMaxInput" type="number" step="0.25" />
+            </label>
+          </div>
+        </section>
+      </aside>
+
+      <section class="workspace">
+        <section class="status-strip" aria-live="polite">
+          <div>
+            <span class="eyebrow">Equilibrios</span>
+            <div id="equilibriaList" class="summary-list"></div>
+          </div>
+          <div>
+            <span class="eyebrow">Bifurcación</span>
+            <div id="bifurcationList" class="summary-list"></div>
+          </div>
+          <div>
+            <span class="eyebrow">Sistema</span>
+            <div id="systemSummary" class="summary-list"></div>
+          </div>
+        </section>
+
+        <section class="chart-grid">
+          <article class="chart-panel">
+            <div class="chart-header">
+              <h2>Diagrama de fase</h2>
+              <div class="legend">
+                <span><i class="dot stable"></i>estable</span>
+                <span><i class="dot unstable"></i>inestable</span>
+                <span><i class="dot semistable"></i>semestable</span>
+              </div>
+            </div>
+            <canvas id="phaseCanvas" width="960" height="520"></canvas>
+          </article>
+
+          <article class="chart-panel">
+            <div class="chart-header">
+              <h2>Diagrama de bifurcación</h2>
+              <div class="legend">
+                <span><i class="line stable"></i>estable</span>
+                <span><i class="line unstable"></i>inestable</span>
+              </div>
+            </div>
+            <canvas id="bifurcationCanvas" width="960" height="520"></canvas>
+          </article>
+        </section>
+
+        <p id="errorBox" class="error-box" hidden></p>
+      </section>
+    </main>
+
+    <script src="/static/app.js?v=3" defer></script>
+  </body>
+</html>
