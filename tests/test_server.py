@@ -36,5 +36,29 @@ class FrameEndpointLogicTests(unittest.TestCase):
         self.assertTrue(any(abs(item["x"]) < 1e-6 for item in result["equilibria"]))
 
 
+class Linear2DAnalysisTests(unittest.TestCase):
+    def test_saddle_classification_for_opposite_real_eigenvalues(self) -> None:
+        result = server.linear2d_analysis({"a": 1, "b": 0, "c": 0, "d": -2})
+        self.assertEqual(result["classification"]["type"], "punto silla")
+        self.assertEqual([item["real"] for item in result["eigenvalues"]], [1.0, -2.0])
+        self.assertEqual(result["solution"]["case"], "autovalores reales distintos")
+
+    def test_center_classification_for_pure_rotation(self) -> None:
+        result = server.linear2d_analysis({"a": 0, "b": -1, "c": 1, "d": 0})
+        self.assertEqual(result["classification"]["type"], "centro")
+        self.assertEqual(result["solution"]["case"], "autovalores complejos conjugados")
+        self.assertAlmostEqual(result["eigenvalues"][0]["imag"], 1.0)
+
+    def test_repeated_defective_solution_case(self) -> None:
+        result = server.linear2d_analysis({"a": 1, "b": 1, "c": 0, "d": 1})
+        self.assertEqual(result["classification"]["type"], "nodo inestable")
+        self.assertEqual(result["solution"]["case"], "autovalores reales repetidos no diagonalizables")
+        self.assertIn("t v + w", result["solution"]["text"])
+
+    def test_rejects_non_numeric_coefficients(self) -> None:
+        with self.assertRaises(ValueError):
+            server.linear2d_analysis({"a": "x", "b": 0, "c": 0, "d": 1})
+
+
 if __name__ == "__main__":
     unittest.main()

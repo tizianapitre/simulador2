@@ -86,6 +86,43 @@ select {
   font-size: 0.88rem;
 }
 
+.tab-nav {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.tab-button {
+  min-height: 38px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text);
+  font-size: 0.86rem;
+  box-shadow: none;
+}
+
+.tab-button:hover,
+.tab-button.active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.tab-view {
+  display: none;
+}
+
+.tab-view.active {
+  display: block;
+}
+
+.workspace-view.active {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+
 .panel {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -207,6 +244,23 @@ button:hover {
   margin: 0;
 }
 
+.matrix-input-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.matrix-input-grid .field {
+  margin: 0;
+}
+
+.compact-help p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
 .workspace {
   display: flex;
   flex-direction: column;
@@ -281,11 +335,21 @@ button:hover {
   background: rgba(107, 114, 128, 0.09);
 }
 
+.pill.degenerate,
+.pill.neutral {
+  border-color: rgba(15, 118, 110, 0.28);
+  background: rgba(15, 118, 110, 0.08);
+}
+
 .chart-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 18px;
   min-height: 0;
+}
+
+#linear2dWorkspace .chart-grid {
+  grid-template-columns: 1fr;
 }
 
 .chart-panel {
@@ -349,6 +413,133 @@ button:hover {
   background: var(--semistable);
 }
 
+.nullcline-x {
+  background: #2563eb;
+}
+
+.nullcline-y {
+  background: var(--semistable);
+}
+
+.trajectory {
+  background: #6d45e8;
+}
+
+.eigen-v1 {
+  background: #0ea5a4;
+}
+
+.eigen-v2 {
+  background: #e11d48;
+}
+
+.origin-dot {
+  background: var(--text);
+}
+
+.linear-details-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.3fr;
+  gap: 18px;
+}
+
+.result-panel {
+  min-height: 190px;
+}
+
+.result-list {
+  display: grid;
+  gap: 10px;
+}
+
+.result-row {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+  background: #fbfdfd;
+}
+
+.result-row span,
+.solution-box p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.solution-box {
+  display: grid;
+  gap: 12px;
+}
+
+.formula-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background:
+    linear-gradient(rgba(15, 118, 110, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(15, 118, 110, 0.035) 1px, transparent 1px),
+    #fff;
+  background-size: 22px 22px;
+  padding: 18px;
+  overflow-x: auto;
+}
+
+.formula-condition {
+  margin: 0 0 14px;
+  color: var(--text);
+  font-size: 1rem;
+  line-height: 1.45;
+}
+
+.formula-equation {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: max-content;
+  color: #111827;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(1.35rem, 2vw, 2.35rem);
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.formula-x {
+  font-weight: 700;
+  font-style: italic;
+}
+
+.formula-v1 {
+  color: #0f766e;
+}
+
+.formula-v2 {
+  color: #be123c;
+}
+
+.formula-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.column-vector {
+  display: inline-grid;
+  grid-template-rows: 1fr 1fr;
+  place-items: center;
+  min-width: 1.55em;
+  padding: 0 0.3em;
+  border-left: 2px solid currentColor;
+  border-right: 2px solid currentColor;
+  line-height: 1;
+  vertical-align: middle;
+}
+
+.column-vector span {
+  display: block;
+  font-size: 0.82em;
+}
+
 canvas {
   display: block;
   width: 100%;
@@ -356,6 +547,11 @@ canvas {
   border-radius: 6px;
   background: linear-gradient(180deg, #fbfdfd 0%, #f7faf9 100%);
   border: 1px solid #e2e8e7;
+}
+
+#linear2dWorkspace canvas {
+  aspect-ratio: 16 / 8.2;
+  min-height: 520px;
 }
 
 .error-box {
@@ -379,7 +575,8 @@ canvas {
   }
 
   .status-strip,
-  .chart-grid {
+  .chart-grid,
+  .linear-details-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -406,5 +603,10 @@ canvas {
 
   .transport-buttons {
     justify-content: flex-start;
+  }
+
+  #linear2dWorkspace canvas {
+    aspect-ratio: 1 / 1;
+    min-height: 340px;
   }
 }

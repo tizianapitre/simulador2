@@ -175,6 +175,380 @@ def clean_number(value: float, digits: int = 8) -> float:
     return 0.0 if abs(rounded) < 10 ** (-digits) else rounded
 
 
+def clean_complex(value: complex, digits: int = 8) -> complex:
+    return complex(clean_number(value.real, digits), clean_number(value.imag, digits))
+
+
+def scalar_payload(value: complex) -> dict[str, float]:
+    value = clean_complex(value)
+    return {"real": value.real, "imag": value.imag}
+
+
+def real_vector_payload(values: list[complex], label: str) -> dict[str, Any]:
+    return {
+        "label": label,
+        "vector": [clean_number(values[0].real), clean_number(values[1].real)],
+        "vectorText": format_vector([complex(values[0].real, 0), complex(values[1].real, 0)]),
+    }
+
+
+def format_scalar(value: complex) -> str:
+    value = clean_complex(value, 6)
+    if abs(value.imag) < 1e-9:
+        return f"{value.real:g}"
+    sign = "+" if value.imag >= 0 else "-"
+    return f"{value.real:g} {sign} {abs(value.imag):g}i"
+
+
+def format_vector(values: list[complex]) -> str:
+    return "(" + ", ".join(format_scalar(value) for value in values) + ")"
+
+
+def normalize_complex_vector(values: list[complex]) -> list[complex]:
+    scale = max((abs(value) for value in values), default=0.0)
+    if scale < 1e-12:
+        return [0j for _ in values]
+    normalized = [value / scale for value in values]
+    pivot = next((value for value in normalized if abs(value) > 1e-12), 1 + 0j)
+    if abs(pivot.imag) < 1e-12 and pivot.real < 0:
+        normalized = [-value for value in normalized]
+    return [clean_complex(value) for value in normalized]
+
+
+def eigenvector_for(a: float, b: float, c: float, d: float, eigenvalue: complex) -> list[complex]:
+    # A vector perpendicular to a non-zero row of A - lambda I spans the nullspace.
+    rows = [
+        (complex(a, 0) - eigenvalue, complex(b, 0)),
+        (complex(c, 0), complex(d, 0) - eigenvalue),
+    ]
+    row = max(rows, key=lambda item: abs(item[0]) + abs(item[1]))
+    if abs(row[0]) + abs(row[1]) < 1e-12:
+        return [1 + 0j, 0j]
+    return normalize_complex_vector([-row[1], row[0]])
+
+
+def eigenspace_dimension(a: float, b: float, c: float, d: float, eigenvalue: float) -> int:
+    rows = [
+        (a - eigenvalue, b),
+        (c, d - eigenvalue),
+    ]
+    if all(abs(p) < 1e-9 and abs(q) < 1e-9 for p, q in rows):
+        return 2
+    return 1
+
+
+def generalized_eigenvector(
+    a: float,
+    b: float,
+    c: float,
+    d: float,
+    eigenvalue: float,
+    vector: list[complex],
+) -> list[complex]:
+    # For a defective repeated eigenvalue, solve (A-lambda I)w = v.
+    matrix = [[a - eigenvalue, b], [c, d - eigenvalue]]
+    target = [vector[0].real, vector[1].real]
+    candidates: list[list[complex]] = []
+    for row, rhs in zip(matrix, target):
+        p, q = row
+        if abs(p) > 1e-10:
+            candidates.append([complex(rhs / p, 0), 0j])
+        if abs(q) > 1e-10:
+            candidates.append([0j, complex(rhs / q, 0)])
+
+    def residual(candidate: list[complex]) -> float:
+        x_value, y_value = candidate[0].real, candidate[1].real
+        return math.hypot(
+            matrix[0][0] * x_value + matrix[0][1] * y_value - target[0],
+            matrix[1][0] * x_value + matrix[1][1] * y_value - target[1],
+        )
+
+    best = min(candidates, key=residual) if candidates else [0j, 0j]
+    return [clean_complex(value) for value in best]
+
+
+def classify_linear_equilibrium(
+    trace: float,
+    determinant: float,
+    discriminant: float,
+    a: float,
+    b: float,
+    c: float,
+    d: float,
+) -> dict[str, str]:
+    eps = 1e-9
+    if abs(a) < eps and abs(b) < eps and abs(c) < eps and abs(d) < eps:
+        return {
+            "type": "caso degenerado",
+            "stability": "degenerate",
+            "detail": "La matriz nula hace que todos los puntos del plano sean equilibrios.",
+        }
+    if abs(determinant) < eps:
+        non_zero = trace
+        tendency = "estable transversalmente" if non_zero < -eps else "inestable transversalmente" if non_zero > eps else "degenerado"
+        return {
+            "type": "caso degenerado",
+            "stability": "degenerate",
+            "detail": f"det(A)=0: hay una recta de equilibrios y el origen no es aislado ({tendency}).",
+        }
+    if determinant < 0:
+        return {"type": "punto silla", "stability": "unstable", "detail": "Autovalores reales con signos opuestos."}
+    if discriminant < -eps:
+        if abs(trace) < eps:
+            return {"type": "centro", "stability": "neutral", "detail": "Autovalores imaginarios puros."}
+        if trace < 0:
+            return {
+                "type": "espiral/foco estable",
+                "stability": "stable",
+                "detail": "Autovalores complejos conjugados con parte real negativa.",
+            }
+        return {
+            "type": "espiral/foco inestable",
+            "stability": "unstable",
+            "detail": "Autovalores complejos conjugados con parte real positiva.",
+        }
+    if discriminant > eps:
+        lambda_1 = (trace + math.sqrt(discriminant)) / 2.0
+        lambda_2 = (trace - math.sqrt(discriminant)) / 2.0
+        if lambda_1 < -eps and lambda_2 < -eps:
+            return {"type": "nodo estable", "stability": "stable", "detail": "Autovalores reales distintos y negativos."}
+        if lambda_1 > eps and lambda_2 > eps:
+            return {"type": "nodo inestable", "stability": "unstable", "detail": "Autovalores reales distintos y positivos."}
+        return {"type": "caso degenerado", "stability": "degenerate", "detail": "Al menos un autovalor es cero."}
+
+    eigenvalue = trace / 2.0
+    dimension = eigenspace_dimension(a, b, c, d, eigenvalue)
+    shape = "nodo propio" if dimension == 2 else "nodo degenerado/impropio"
+    if eigenvalue < -eps:
+        return {"type": "nodo estable", "stability": "stable", "detail": f"Autovalor real repetido negativo; {shape}."}
+    if eigenvalue > eps:
+        return {"type": "nodo inestable", "stability": "unstable", "detail": f"Autovalor real repetido positivo; {shape}."}
+    return {"type": "caso degenerado", "stability": "degenerate", "detail": "Autovalor real repetido igual a cero."}
+
+
+def rk4_linear_step(a: float, b: float, c: float, d: float, x: float, y: float, h: float) -> tuple[float, float]:
+    def field(px: float, py: float) -> tuple[float, float]:
+        return a * px + b * py, c * px + d * py
+
+    k1x, k1y = field(x, y)
+    k2x, k2y = field(x + 0.5 * h * k1x, y + 0.5 * h * k1y)
+    k3x, k3y = field(x + 0.5 * h * k2x, y + 0.5 * h * k2y)
+    k4x, k4y = field(x + h * k3x, y + h * k3y)
+    return (
+        x + h * (k1x + 2 * k2x + 2 * k3x + k4x) / 6.0,
+        y + h * (k1y + 2 * k2y + 2 * k3y + k4y) / 6.0,
+    )
+
+
+def representative_trajectories(a: float, b: float, c: float, d: float, limit: float = 5.0) -> list[list[dict[str, float]]]:
+    seeds = [
+        (-3.0, -1.5),
+        (-3.0, 1.5),
+        (-1.5, 3.0),
+        (1.5, 3.0),
+        (3.0, 1.5),
+        (3.0, -1.5),
+        (1.5, -3.0),
+        (-1.5, -3.0),
+        (-1.0, 0.0),
+        (0.0, 1.0),
+        (1.0, 0.0),
+        (0.0, -1.0),
+    ]
+    trajectories: list[list[dict[str, float]]] = []
+    h = 0.035
+    steps = 240
+
+    def in_bounds(x_value: float, y_value: float) -> bool:
+        return -limit <= x_value <= limit and -limit <= y_value <= limit
+
+    def trace(seed_x: float, seed_y: float, step: float) -> list[tuple[float, float]]:
+        points = [(seed_x, seed_y)]
+        x_value, y_value = seed_x, seed_y
+        for _ in range(steps):
+            next_x, next_y = rk4_linear_step(a, b, c, d, x_value, y_value, step)
+            if not in_bounds(next_x, next_y):
+                break
+            points.append((next_x, next_y))
+            x_value, y_value = next_x, next_y
+        return points
+
+    for seed_x, seed_y in seeds:
+        backward = trace(float(seed_x), float(seed_y), -h)
+        forward = trace(float(seed_x), float(seed_y), h)
+        points = list(reversed(backward))[::3] + forward[1::3]
+        if len(points) >= 2:
+            trajectories.append([{"x": clean_number(x), "y": clean_number(y)} for x, y in points])
+    return trajectories
+
+
+def line_description(p: float, q: float) -> str:
+    if abs(p) < 1e-9 and abs(q) < 1e-9:
+        return "todo el plano"
+    if abs(q) < 1e-9:
+        return "x = 0"
+    if abs(p) < 1e-9:
+        return "y = 0"
+    return f"y = {clean_number(-p / q, 6):g} x"
+
+
+def parse_linear2d_payload(payload: dict[str, Any]) -> tuple[float, float, float, float]:
+    values = []
+    for key in ("a", "b", "c", "d"):
+        try:
+            value = float(payload.get(key))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Todos los coeficientes a, b, c y d deben ser numericos.") from exc
+        if not math.isfinite(value):
+            raise ValueError("Todos los coeficientes a, b, c y d deben ser finitos.")
+        values.append(value)
+    return values[0], values[1], values[2], values[3]
+
+
+def linear2d_analysis(payload: dict[str, Any]) -> dict[str, Any]:
+    a, b, c, d = parse_linear2d_payload(payload)
+    trace = a + d
+    determinant = a * d - b * c
+    discriminant = trace * trace - 4.0 * determinant
+    eps = 1e-9
+
+    eigenvalues: list[complex]
+    if discriminant >= -eps:
+        root = math.sqrt(max(0.0, discriminant))
+        eigenvalues = [complex((trace + root) / 2.0, 0), complex((trace - root) / 2.0, 0)]
+    else:
+        real = trace / 2.0
+        imag = math.sqrt(-discriminant) / 2.0
+        eigenvalues = [complex(real, imag), complex(real, -imag)]
+
+    repeated_real = abs(discriminant) <= eps
+    unique_eigenvalues = [eigenvalues[0]] if repeated_real else eigenvalues
+    eigenvectors = []
+    for eigenvalue in unique_eigenvalues:
+        vector = eigenvector_for(a, b, c, d, eigenvalue)
+        eigenvectors.append(
+            {
+                "eigenvalue": scalar_payload(eigenvalue),
+                "eigenvalueText": format_scalar(eigenvalue),
+                "vector": [scalar_payload(value) for value in vector],
+                "vectorText": format_vector(vector),
+                "multiplicity": 2 if repeated_real else 1,
+            }
+        )
+
+    classification = classify_linear_equilibrium(trace, determinant, discriminant, a, b, c, d)
+    vector_lines: list[dict[str, Any]] = []
+
+    if discriminant > eps:
+        solution_case = "autovalores reales distintos"
+        solution_text = (
+            "X(t) = C1 exp(lambda1 t) v1 + C2 exp(lambda2 t) v2, "
+            f"con lambda1={format_scalar(eigenvalues[0])}, v1={eigenvectors[0]['vectorText']} y "
+            f"lambda2={format_scalar(eigenvalues[1])}, v2={eigenvectors[1]['vectorText']}."
+        )
+        vector_lines = [
+            real_vector_payload(eigenvector_for(a, b, c, d, eigenvalues[0]), "v1"),
+            real_vector_payload(eigenvector_for(a, b, c, d, eigenvalues[1]), "v2"),
+        ]
+        solution_formula = {
+            "kind": "realDistinct",
+            "lambda1": format_scalar(eigenvalues[0]),
+            "lambda2": format_scalar(eigenvalues[1]),
+            "v1": vector_lines[0]["vector"],
+            "v2": vector_lines[1]["vector"],
+        }
+    elif repeated_real:
+        eigenvalue = eigenvalues[0].real
+        vector = eigenvector_for(a, b, c, d, complex(eigenvalue, 0))
+        if eigenspace_dimension(a, b, c, d, eigenvalue) == 2:
+            solution_case = "autovalores reales repetidos diagonalizables"
+            solution_text = (
+                f"X(t) = exp({format_scalar(complex(eigenvalue, 0))} t) "
+                "(C1 (1, 0) + C2 (0, 1))."
+            )
+            vector_lines = [
+                {"label": "v1", "vector": [1.0, 0.0], "vectorText": "(1, 0)"},
+                {"label": "v2", "vector": [0.0, 1.0], "vectorText": "(0, 1)"},
+            ]
+            solution_formula = {
+                "kind": "realRepeatedDiagonalizable",
+                "lambda": format_scalar(complex(eigenvalue, 0)),
+                "v1": vector_lines[0]["vector"],
+                "v2": vector_lines[1]["vector"],
+            }
+        else:
+            generalized = generalized_eigenvector(a, b, c, d, eigenvalue, vector)
+            solution_case = "autovalores reales repetidos no diagonalizables"
+            solution_text = (
+                "X(t) = exp(lambda t) [C1 v + C2 (t v + w)], "
+                f"con lambda={format_scalar(complex(eigenvalue, 0))}, v={format_vector(vector)} "
+                f"y w={format_vector(generalized)}."
+            )
+            vector_lines = [
+                real_vector_payload(vector, "v1"),
+                real_vector_payload(generalized, "v2"),
+            ]
+            solution_formula = {
+                "kind": "realRepeatedDefective",
+                "lambda": format_scalar(complex(eigenvalue, 0)),
+                "v1": vector_lines[0]["vector"],
+                "v2": vector_lines[1]["vector"],
+            }
+    else:
+        alpha = eigenvalues[0].real
+        beta = abs(eigenvalues[0].imag)
+        vector = eigenvector_for(a, b, c, d, eigenvalues[0])
+        p_vector = [complex(value.real, 0) for value in vector]
+        q_vector = [complex(value.imag, 0) for value in vector]
+        solution_case = "autovalores complejos conjugados"
+        solution_text = (
+            "Si v=p+iq es un autovector de alpha+beta i, entonces "
+            "X(t)=exp(alpha t){C1[p cos(beta t)-q sin(beta t)] + "
+            "C2[p sin(beta t)+q cos(beta t)]}. "
+            f"Aqui alpha={format_scalar(complex(alpha, 0))}, beta={clean_number(beta, 6):g}, "
+            f"p={format_vector(p_vector)} y q={format_vector(q_vector)}."
+        )
+        vector_lines = [
+            real_vector_payload(p_vector, "p"),
+            real_vector_payload(q_vector, "q"),
+        ]
+        solution_formula = {
+            "kind": "complexConjugate",
+            "alpha": format_scalar(complex(alpha, 0)),
+            "beta": f"{clean_number(beta, 6):g}",
+            "p": vector_lines[0]["vector"],
+            "q": vector_lines[1]["vector"],
+        }
+
+    return {
+        "matrix": [[clean_number(a), clean_number(b)], [clean_number(c), clean_number(d)]],
+        "trace": clean_number(trace),
+        "determinant": clean_number(determinant),
+        "discriminant": clean_number(discriminant),
+        "eigenvalues": [scalar_payload(value) for value in eigenvalues],
+        "eigenvectors": eigenvectors,
+        "classification": classification,
+        "solution": {"case": solution_case, "text": solution_text, "formula": solution_formula},
+        "nullclines": [
+            {
+                "id": "dx",
+                "label": "dx/dt = 0",
+                "equation": f"{clean_number(a):g}x + {clean_number(b):g}y = 0",
+                "description": line_description(a, b),
+                "coefficients": [clean_number(a), clean_number(b)],
+            },
+            {
+                "id": "dy",
+                "label": "dy/dt = 0",
+                "equation": f"{clean_number(c):g}x + {clean_number(d):g}y = 0",
+                "description": line_description(c, d),
+                "coefficients": [clean_number(c), clean_number(d)],
+            },
+        ],
+        "phase": {"range": [-5, 5], "trajectories": representative_trajectories(a, b, c, d), "vectorLines": vector_lines},
+    }
+
+
 def safe_eval(func: Callable[[float, float], float], x: float, r: float) -> float | None:
     try:
         value = func(x, r)
@@ -657,14 +1031,23 @@ class SimulatorHandler(SimpleHTTPRequestHandler):
         return super().do_GET()
 
     def do_POST(self) -> None:
-        if not (self.path.startswith("/api/analyze") or self.path.startswith("/api/frame")):
+        if not (
+            self.path.startswith("/api/analyze")
+            or self.path.startswith("/api/frame")
+            or self.path.startswith("/api/linear2d")
+        ):
             self.send_error(HTTPStatus.NOT_FOUND)
             return
         try:
             content_length = int(self.headers.get("Content-Length", "0"))
             raw = self.rfile.read(content_length)
             payload = json.loads(raw.decode("utf-8") or "{}")
-            result = frame(payload) if self.path.startswith("/api/frame") else analyze(payload)
+            if self.path.startswith("/api/linear2d"):
+                result = linear2d_analysis(payload)
+            elif self.path.startswith("/api/frame"):
+                result = frame(payload)
+            else:
+                result = analyze(payload)
         except (ExpressionError, ValueError, json.JSONDecodeError) as exc:
             self.send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
             return

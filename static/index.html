@@ -3,120 +3,222 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Simulador 1D Autónomo</title>
-    <link rel="stylesheet" href="/static/styles.css?v=3" />
+    <title>Simulador de sistemas autonomos</title>
+    <link rel="stylesheet" href="/static/styles.css?v=4" />
   </head>
   <body>
     <main class="app-shell">
       <aside class="sidebar" aria-label="Controles del simulador">
         <div class="brand">
-          <span class="brand-mark">x′</span>
+          <span class="brand-mark">x'</span>
           <div>
-            <h1>Simulador 1D autónomo</h1>
-            <p>Sistemas x′ = f(x, r)</p>
+            <h1>Simulador de sistemas</h1>
+            <p>Analisis cualitativo 1D y 2D</p>
           </div>
         </div>
 
-        <section class="panel">
-          <h2>Modelo</h2>
-          <label class="field">
-            <span>Tipo</span>
-            <select id="modelSelect"></select>
-          </label>
-          <label class="field">
-            <span>f(x, r)</span>
-            <input id="expressionInput" spellcheck="false" autocomplete="off" />
-          </label>
-          <label class="field">
-            <span>r actual</span>
-            <input id="parameterInput" type="number" step="0.05" />
-          </label>
-          <input id="parameterSlider" class="range" type="range" step="0.01" />
-          <div class="transport">
-            <div class="transport-buttons">
-              <button id="playPauseButton" class="icon-button play-button" type="button" aria-label="Reproducir animacion" title="Reproducir">&#9654;</button>
-              <button id="restartButton" class="icon-button restart-button" type="button" aria-label="Reiniciar animacion" title="Reiniciar">&#8634;</button>
-            </div>
-            <label class="field compact-field">
-              <span>Velocidad</span>
-              <select id="speedSelect">
-                <option value="12">Lenta</option>
-                <option value="8" selected>Media</option>
-                <option value="4">Rapida</option>
-              </select>
-            </label>
-          </div>
-          <button id="analyzeButton" type="button">Analizar</button>
-        </section>
+        <nav class="tab-nav" aria-label="Secciones">
+          <button id="oneDTabButton" class="tab-button active" type="button" data-tab="oneD">1D autonomo</button>
+          <button id="linear2dTabButton" class="tab-button" type="button" data-tab="linear2d">Sistemas 2D</button>
+        </nav>
 
-        <section class="panel">
-          <h2>Rangos</h2>
-          <div class="two-col">
+        <div id="oneDControls" class="tab-view active">
+          <section class="panel">
+            <h2>Modelo</h2>
             <label class="field">
-              <span>x min</span>
-              <input id="xMinInput" type="number" step="0.25" />
+              <span>Tipo</span>
+              <select id="modelSelect"></select>
             </label>
             <label class="field">
-              <span>x max</span>
-              <input id="xMaxInput" type="number" step="0.25" />
+              <span>f(x, r)</span>
+              <input id="expressionInput" spellcheck="false" autocomplete="off" />
             </label>
             <label class="field">
-              <span>r min</span>
-              <input id="rMinInput" type="number" step="0.25" />
+              <span>r actual</span>
+              <input id="parameterInput" type="number" step="0.05" />
             </label>
-            <label class="field">
-              <span>r max</span>
-              <input id="rMaxInput" type="number" step="0.25" />
-            </label>
-          </div>
-        </section>
+            <input id="parameterSlider" class="range" type="range" step="0.01" />
+            <div class="transport">
+              <div class="transport-buttons">
+                <button id="playPauseButton" class="icon-button play-button" type="button" aria-label="Reproducir animacion" title="Reproducir">&#9654;</button>
+                <button id="restartButton" class="icon-button restart-button" type="button" aria-label="Reiniciar animacion" title="Reiniciar">&#8634;</button>
+              </div>
+              <label class="field compact-field">
+                <span>Velocidad</span>
+                <select id="speedSelect">
+                  <option value="12">Lenta</option>
+                  <option value="8" selected>Media</option>
+                  <option value="4">Rapida</option>
+                </select>
+              </label>
+            </div>
+            <button id="analyzeButton" type="button">Analizar</button>
+          </section>
+
+          <section class="panel">
+            <h2>Rangos</h2>
+            <div class="two-col">
+              <label class="field">
+                <span>x min</span>
+                <input id="xMinInput" type="number" step="0.25" />
+              </label>
+              <label class="field">
+                <span>x max</span>
+                <input id="xMaxInput" type="number" step="0.25" />
+              </label>
+              <label class="field">
+                <span>r min</span>
+                <input id="rMinInput" type="number" step="0.25" />
+              </label>
+              <label class="field">
+                <span>r max</span>
+                <input id="rMaxInput" type="number" step="0.25" />
+              </label>
+            </div>
+          </section>
+        </div>
+
+        <div id="linear2dControls" class="tab-view">
+          <section class="panel">
+            <h2>Matriz A</h2>
+            <div class="matrix-input-grid" aria-label="Coeficientes de la matriz 2 por 2">
+              <label class="field">
+                <span>a</span>
+                <input id="linearAInput" type="number" step="0.1" value="1" />
+              </label>
+              <label class="field">
+                <span>b</span>
+                <input id="linearBInput" type="number" step="0.1" value="1" />
+              </label>
+              <label class="field">
+                <span>c</span>
+                <input id="linearCInput" type="number" step="0.1" value="-2" />
+              </label>
+              <label class="field">
+                <span>d</span>
+                <input id="linearDInput" type="number" step="0.1" value="-1" />
+              </label>
+            </div>
+            <button id="linearCalculateButton" type="button">Calcular</button>
+          </section>
+
+          <section class="panel compact-help">
+            <h2>Sistema</h2>
+            <p>dx/dt = ax + by</p>
+            <p>dy/dt = cx + dy</p>
+            <p>Rango inicial del plano: -5 <= x,y <= 5.</p>
+          </section>
+        </div>
       </aside>
 
       <section class="workspace">
-        <section class="status-strip" aria-live="polite">
-          <div>
-            <span class="eyebrow">Equilibrios</span>
-            <div id="equilibriaList" class="summary-list"></div>
-          </div>
-          <div>
-            <span class="eyebrow">Bifurcación</span>
-            <div id="bifurcationList" class="summary-list"></div>
-          </div>
-          <div>
-            <span class="eyebrow">Sistema</span>
-            <div id="systemSummary" class="summary-list"></div>
-          </div>
-        </section>
-
-        <section class="chart-grid">
-          <article class="chart-panel">
-            <div class="chart-header">
-              <h2>Diagrama de fase</h2>
-              <div class="legend">
-                <span><i class="dot stable"></i>estable</span>
-                <span><i class="dot unstable"></i>inestable</span>
-                <span><i class="dot semistable"></i>semestable</span>
-              </div>
+        <div id="oneDWorkspace" class="tab-view active workspace-view">
+          <section class="status-strip" aria-live="polite">
+            <div>
+              <span class="eyebrow">Equilibrios</span>
+              <div id="equilibriaList" class="summary-list"></div>
             </div>
-            <canvas id="phaseCanvas" width="960" height="520"></canvas>
-          </article>
-
-          <article class="chart-panel">
-            <div class="chart-header">
-              <h2>Diagrama de bifurcación</h2>
-              <div class="legend">
-                <span><i class="line stable"></i>estable</span>
-                <span><i class="line unstable"></i>inestable</span>
-              </div>
+            <div>
+              <span class="eyebrow">Bifurcacion</span>
+              <div id="bifurcationList" class="summary-list"></div>
             </div>
-            <canvas id="bifurcationCanvas" width="960" height="520"></canvas>
-          </article>
-        </section>
+            <div>
+              <span class="eyebrow">Sistema</span>
+              <div id="systemSummary" class="summary-list"></div>
+            </div>
+          </section>
 
-        <p id="errorBox" class="error-box" hidden></p>
+          <section class="chart-grid">
+            <article class="chart-panel">
+              <div class="chart-header">
+                <h2>Diagrama de fase</h2>
+                <div class="legend">
+                  <span><i class="dot stable"></i>estable</span>
+                  <span><i class="dot unstable"></i>inestable</span>
+                  <span><i class="dot semistable"></i>semestable</span>
+                </div>
+              </div>
+              <canvas id="phaseCanvas" width="960" height="520"></canvas>
+            </article>
+
+            <article class="chart-panel">
+              <div class="chart-header">
+                <h2>Diagrama de bifurcacion</h2>
+                <div class="legend">
+                  <span><i class="line stable"></i>estable</span>
+                  <span><i class="line unstable"></i>inestable</span>
+                </div>
+              </div>
+              <canvas id="bifurcationCanvas" width="960" height="520"></canvas>
+            </article>
+          </section>
+
+          <p id="errorBox" class="error-box" hidden></p>
+        </div>
+
+        <div id="linear2dWorkspace" class="tab-view workspace-view">
+          <section class="status-strip linear-status" aria-live="polite">
+            <div>
+              <span class="eyebrow">Matriz</span>
+              <div id="linearMatrixSummary" class="summary-list"></div>
+            </div>
+            <div>
+              <span class="eyebrow">Clasificacion</span>
+              <div id="linearClassificationSummary" class="summary-list"></div>
+            </div>
+            <div>
+              <span class="eyebrow">Invariantes</span>
+              <div id="linearInvariantSummary" class="summary-list"></div>
+            </div>
+          </section>
+
+          <section class="linear-details-grid">
+            <article class="chart-panel result-panel">
+              <div class="chart-header">
+                <h2>Autovalores y autovectores</h2>
+              </div>
+              <div id="linearEigenList" class="result-list"></div>
+            </article>
+
+            <article class="chart-panel result-panel">
+              <div class="chart-header">
+                <h2>Solucion general</h2>
+              </div>
+              <div id="linearSolutionBox" class="solution-box"></div>
+            </article>
+          </section>
+
+          <section class="chart-grid">
+            <article class="chart-panel">
+              <div class="chart-header">
+                <h2>Nulclinas</h2>
+                <div class="legend">
+                  <span><i class="line nullcline-x"></i>dx/dt = 0</span>
+                  <span><i class="line nullcline-y"></i>dy/dt = 0</span>
+                </div>
+              </div>
+              <canvas id="nullclineCanvas" width="960" height="520"></canvas>
+            </article>
+
+            <article class="chart-panel">
+              <div class="chart-header">
+                <h2>Diagrama de fase 2D</h2>
+                <div class="legend">
+                  <span><i class="line trajectory"></i>trayectorias</span>
+                  <span><i class="line eigen-v1"></i>v1 / p</span>
+                  <span><i class="line eigen-v2"></i>v2 / q</span>
+                  <span><i class="dot origin-dot"></i>(0,0)</span>
+                </div>
+              </div>
+              <canvas id="linearPhaseCanvas" width="960" height="520"></canvas>
+            </article>
+          </section>
+
+          <p id="linearErrorBox" class="error-box" hidden></p>
+        </div>
       </section>
     </main>
 
-    <script src="/static/app.js?v=3" defer></script>
+    <script src="/static/app.js?v=4" defer></script>
   </body>
 </html>

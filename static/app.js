@@ -17,6 +17,25 @@ const els = {
   phaseCanvas: document.querySelector("#phaseCanvas"),
   bifurcationCanvas: document.querySelector("#bifurcationCanvas"),
   errorBox: document.querySelector("#errorBox"),
+  oneDTabButton: document.querySelector("#oneDTabButton"),
+  linear2dTabButton: document.querySelector("#linear2dTabButton"),
+  oneDControls: document.querySelector("#oneDControls"),
+  linear2dControls: document.querySelector("#linear2dControls"),
+  oneDWorkspace: document.querySelector("#oneDWorkspace"),
+  linear2dWorkspace: document.querySelector("#linear2dWorkspace"),
+  linearAInput: document.querySelector("#linearAInput"),
+  linearBInput: document.querySelector("#linearBInput"),
+  linearCInput: document.querySelector("#linearCInput"),
+  linearDInput: document.querySelector("#linearDInput"),
+  linearCalculateButton: document.querySelector("#linearCalculateButton"),
+  linearMatrixSummary: document.querySelector("#linearMatrixSummary"),
+  linearClassificationSummary: document.querySelector("#linearClassificationSummary"),
+  linearInvariantSummary: document.querySelector("#linearInvariantSummary"),
+  linearEigenList: document.querySelector("#linearEigenList"),
+  linearSolutionBox: document.querySelector("#linearSolutionBox"),
+  nullclineCanvas: document.querySelector("#nullclineCanvas"),
+  linearPhaseCanvas: document.querySelector("#linearPhaseCanvas"),
+  linearErrorBox: document.querySelector("#linearErrorBox"),
 };
 
 const colors = {
@@ -27,6 +46,12 @@ const colors = {
   axis: "#6f7d80",
   grid: "#dfe7e5",
   curve: "#0f766e",
+  nullclineX: "#2563eb",
+  nullclineY: "#b7791f",
+  trajectory: "#6d45e8",
+  eigenV1: "#0ea5a4",
+  eigenV2: "#e11d48",
+  vector: "#87959a",
   text: "#243033",
 };
 
@@ -40,6 +65,8 @@ let lastAnimationTimestamp = null;
 let lastFrameDispatch = 0;
 let frameInFlight = false;
 let queuedFrameParameter = null;
+let activeTab = "oneD";
+let linear2dResult = null;
 
 function formatNumber(value) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return "n/a";
@@ -67,6 +94,39 @@ function pill(text, className = "") {
 function setError(message) {
   els.errorBox.hidden = !message;
   els.errorBox.textContent = message || "";
+}
+
+function setLinearError(message) {
+  els.linearErrorBox.hidden = !message;
+  els.linearErrorBox.textContent = message || "";
+}
+
+function setActiveTab(tab) {
+  activeTab = tab;
+  if (tab !== "oneD") {
+    stopAnimation();
+  }
+  [
+    [els.oneDTabButton, tab === "oneD"],
+    [els.linear2dTabButton, tab === "linear2d"],
+    [els.oneDControls, tab === "oneD"],
+    [els.linear2dControls, tab === "linear2d"],
+    [els.oneDWorkspace, tab === "oneD"],
+    [els.linear2dWorkspace, tab === "linear2d"],
+  ].forEach(([element, isActive]) => {
+    element.classList.toggle("active", isActive);
+  });
+
+  if (tab === "linear2d") {
+    if (linear2dResult) {
+      renderLinear2d(linear2dResult);
+    } else {
+      calculateLinear2d().catch((error) => setLinearError(error.message));
+    }
+  } else if (activeResult) {
+    renderPhase(activeResult);
+    renderBifurcation(activeResult);
+  }
 }
 
 function selectedModel() {
@@ -608,6 +668,352 @@ function renderBifurcation(result) {
   });
 }
 
+function linear2dPayload() {
+  const entries = [
+    ["a", els.linearAInput],
+    ["b", els.linearBInput],
+    ["c", els.linearCInput],
+    ["d", els.linearDInput],
+  ];
+  const values = {};
+  entries.forEach(([key, input]) => {
+    const value = Number(input.value);
+    if (!Number.isFinite(value)) {
+      throw new Error("Todos los valores de la matriz deben ser numericos.");
+    }
+    values[key] = value;
+  });
+  return values;
+}
+
+async function calculateLinear2d() {
+  setLinearError("");
+  const response = await fetch("/api/linear2d", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(linear2dPayload()),
+  });
+  const result = await response.json();
+  if (!response.ok) {
+    throw new Error(result.error || "No se pudo analizar el sistema 2D.");
+  }
+  linear2dResult = result;
+  renderLinear2d(result);
+}
+
+function renderLinear2d(result) {
+  els.linearMatrixSummary.replaceChildren(
+    pill(`[${formatNumber(result.matrix[0][0])}, ${formatNumber(result.matrix[0][1])}]`),
+    pill(`[${formatNumber(result.matrix[1][0])}, ${formatNumber(result.matrix[1][1])}]`),
+  );
+
+  els.linearClassificationSummary.replaceChildren(
+    pill(result.classification.type, result.classification.stability),
+    pill(result.classification.detail),
+  );
+
+  els.linearInvariantSummary.replaceChildren(
+    pill(`tr = ${formatNumber(result.trace)}`),
+    pill(`det = ${formatNumber(result.determinant)}`),
+    pill(`Delta = ${formatNumber(result.discriminant)}`),
+  );
+
+  els.linearEigenList.replaceChildren();
+  result.eigenvectors.forEach((item, index) => {
+    const row = document.createElement("div");
+    row.className = "result-row";
+    const multiplicity = item.multiplicity > 1 ? `, multiplicidad ${item.multiplicity}` : "";
+    const title = document.createElement("strong");
+    title.textContent = `lambda ${index + 1} = ${item.eigenvalueText}${multiplicity}`;
+    const vector = document.createElement("span");
+    vector.textContent = `v = ${item.vectorText}`;
+    row.append(title, vector);
+    els.linearEigenList.append(row);
+  });
+
+  els.linearSolutionBox.replaceChildren();
+  const casePill = pill(result.solution.case);
+  els.linearSolutionBox.append(casePill, buildSolutionFormula(result.solution));
+
+  renderNullclines(result);
+  renderLinearPhase(result);
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function vectorColumn(values) {
+  return `
+    <span class="column-vector">
+      <span>${formatNumber(values[0])}</span>
+      <span>${formatNumber(values[1])}</span>
+    </span>
+  `;
+}
+
+function buildSolutionFormula(solution) {
+  const formula = solution.formula || {};
+  const card = document.createElement("div");
+  card.className = "formula-card";
+  const condition = document.createElement("p");
+  condition.className = "formula-condition";
+  condition.innerHTML = `<strong>Condicion:</strong> ${escapeHtml(solution.case)}.`;
+  const equation = document.createElement("div");
+  equation.className = "formula-equation";
+
+  if (formula.kind === "realDistinct") {
+    equation.innerHTML = `
+      <span class="formula-x">X(t)</span> =
+      c<sub>1</sub> e<sup>${escapeHtml(formula.lambda1)}t</sup>
+      <span class="formula-v1">${vectorColumn(formula.v1)}</span>
+      +
+      c<sub>2</sub> e<sup>${escapeHtml(formula.lambda2)}t</sup>
+      <span class="formula-v2">${vectorColumn(formula.v2)}</span>
+    `;
+  } else if (formula.kind === "realRepeatedDiagonalizable") {
+    equation.innerHTML = `
+      <span class="formula-x">X(t)</span> =
+      c<sub>1</sub> e<sup>${escapeHtml(formula.lambda)}t</sup>
+      <span class="formula-v1">${vectorColumn(formula.v1)}</span>
+      +
+      c<sub>2</sub> e<sup>${escapeHtml(formula.lambda)}t</sup>
+      <span class="formula-v2">${vectorColumn(formula.v2)}</span>
+    `;
+  } else if (formula.kind === "realRepeatedDefective") {
+    equation.innerHTML = `
+      <span class="formula-x">X(t)</span> =
+      c<sub>1</sub> e<sup>${escapeHtml(formula.lambda)}t</sup>
+      <span class="formula-v1">${vectorColumn(formula.v1)}</span>
+      +
+      c<sub>2</sub> e<sup>${escapeHtml(formula.lambda)}t</sup>
+      <span class="formula-group">(t <span class="formula-v1">${vectorColumn(formula.v1)}</span> +
+      <span class="formula-v2">${vectorColumn(formula.v2)}</span>)</span>
+    `;
+  } else if (formula.kind === "complexConjugate") {
+    equation.innerHTML = `
+      <span class="formula-x">X(t)</span> =
+      e<sup>${escapeHtml(formula.alpha)}t</sup>
+      { c<sub>1</sub>(<span class="formula-v1">${vectorColumn(formula.p)}</span> cos(${escapeHtml(formula.beta)}t)
+      - <span class="formula-v2">${vectorColumn(formula.q)}</span> sin(${escapeHtml(formula.beta)}t))
+      + c<sub>2</sub>(<span class="formula-v1">${vectorColumn(formula.p)}</span> sin(${escapeHtml(formula.beta)}t)
+      + <span class="formula-v2">${vectorColumn(formula.q)}</span> cos(${escapeHtml(formula.beta)}t)) }
+    `;
+  } else {
+    equation.textContent = solution.text;
+  }
+
+  card.append(condition, equation);
+  return card;
+}
+
+function drawAxes(ctx, plot, xScale, yScale) {
+  ctx.save();
+  ctx.strokeStyle = colors.axis;
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(plot.left, yScale(0));
+  ctx.lineTo(plot.right, yScale(0));
+  ctx.moveTo(xScale(0), plot.top);
+  ctx.lineTo(xScale(0), plot.bottom);
+  ctx.stroke();
+  ctx.fillStyle = colors.text;
+  ctx.font = "13px Inter, system-ui, sans-serif";
+  ctx.textAlign = "right";
+  ctx.fillText("x", plot.right, yScale(0) - 8);
+  ctx.textAlign = "left";
+  ctx.fillText("y", xScale(0) + 8, plot.top + 12);
+  ctx.restore();
+}
+
+function lineEndpoints(p, q, limit) {
+  const eps = 1e-10;
+  if (Math.abs(p) < eps && Math.abs(q) < eps) return [];
+  if (Math.abs(q) < eps) return [[0, -limit], [0, limit]];
+  if (Math.abs(p) < eps) return [[-limit, 0], [limit, 0]];
+
+  const candidates = [
+    [-limit, (p * limit) / q],
+    [limit, (-p * limit) / q],
+    [(-q * limit) / p, limit],
+    [(q * limit) / p, -limit],
+  ].filter(([x, y]) => x >= -limit - eps && x <= limit + eps && y >= -limit - eps && y <= limit + eps);
+
+  const unique = [];
+  candidates.forEach((point) => {
+    if (!unique.some((other) => Math.hypot(other[0] - point[0], other[1] - point[1]) < 1e-6)) {
+      unique.push(point);
+    }
+  });
+  return unique.slice(0, 2);
+}
+
+function drawLinearGrid(canvas) {
+  const { ctx, width, height } = resizeCanvas(canvas);
+  ctx.clearRect(0, 0, width, height);
+  const plot = { left: 46, right: width - 18, top: 18, bottom: height - 38 };
+  const limit = 5;
+  const xScale = (x) => plot.left + ((x + limit) / (2 * limit)) * (plot.right - plot.left);
+  const yScale = (y) => plot.bottom - ((y + limit) / (2 * limit)) * (plot.bottom - plot.top);
+  drawGrid(ctx, plot, ticks(-limit, limit, 5), ticks(-limit, limit, 5), xScale, yScale);
+  drawAxes(ctx, plot, xScale, yScale);
+  return { ctx, width, height, plot, limit, xScale, yScale };
+}
+
+function drawOrigin(ctx, xScale, yScale) {
+  ctx.save();
+  ctx.fillStyle = colors.text;
+  ctx.strokeStyle = "#ffffff";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(xScale(0), yScale(0), 6, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+function renderNullclines(result) {
+  const { ctx, limit, xScale, yScale } = drawLinearGrid(els.nullclineCanvas);
+  const palette = { dx: colors.nullclineX, dy: colors.nullclineY };
+
+  result.nullclines.forEach((line) => {
+    const [p, q] = line.coefficients;
+    const endpoints = lineEndpoints(p, q, limit);
+    if (endpoints.length < 2) return;
+    ctx.save();
+    ctx.strokeStyle = palette[line.id];
+    ctx.lineWidth = 2.8;
+    ctx.setLineDash(line.id === "dy" ? [8, 6] : []);
+    ctx.beginPath();
+    ctx.moveTo(xScale(endpoints[0][0]), yScale(endpoints[0][1]));
+    ctx.lineTo(xScale(endpoints[1][0]), yScale(endpoints[1][1]));
+    ctx.stroke();
+    ctx.restore();
+  });
+
+  drawOrigin(ctx, xScale, yScale);
+
+  ctx.save();
+  ctx.font = "12px Inter, system-ui, sans-serif";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  result.nullclines.forEach((line, index) => {
+    ctx.fillStyle = palette[line.id];
+    ctx.fillText(`${line.label}: ${line.equation} (${line.description})`, 54, 28 + index * 18);
+  });
+  ctx.restore();
+}
+
+function drawEigenvectorLines(ctx, vectorLines, limit, xScale, yScale) {
+  const palette = [colors.eigenV1, colors.eigenV2, "#0891b2", "#db2777"];
+  (vectorLines || []).forEach((item, index) => {
+    const [vx, vy] = item.vector || [];
+    if (!Number.isFinite(vx) || !Number.isFinite(vy) || Math.hypot(vx, vy) < 1e-9) return;
+    const endpoints = lineEndpoints(-vy, vx, limit);
+    if (endpoints.length < 2) return;
+    const color = palette[index % palette.length];
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = 3;
+    ctx.globalAlpha = 0.86;
+    ctx.setLineDash(index === 1 ? [12, 7] : []);
+    ctx.beginPath();
+    ctx.moveTo(xScale(endpoints[0][0]), yScale(endpoints[0][1]));
+    ctx.lineTo(xScale(endpoints[1][0]), yScale(endpoints[1][1]));
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.font = "700 13px Inter, system-ui, sans-serif";
+    const labelPoint = endpoints[1];
+    ctx.fillText(item.label || `v${index + 1}`, xScale(labelPoint[0]) - 24, yScale(labelPoint[1]) + 18);
+    ctx.restore();
+  });
+}
+
+function drawVectorArrow(ctx, x1, y1, x2, y2, color, width = 1.5) {
+  const angle = Math.atan2(y2 - y1, x2 - x1);
+  const head = 6;
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = width;
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - head * Math.cos(angle - Math.PI / 6), y2 - head * Math.sin(angle - Math.PI / 6));
+  ctx.lineTo(x2 - head * Math.cos(angle + Math.PI / 6), y2 - head * Math.sin(angle + Math.PI / 6));
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function renderLinearPhase(result) {
+  const { ctx, limit, xScale, yScale } = drawLinearGrid(els.linearPhaseCanvas);
+  const [[a, b], [c, d]] = result.matrix;
+
+  for (let ix = -4; ix <= 4; ix += 1) {
+    for (let iy = -4; iy <= 4; iy += 1) {
+      const vx = a * ix + b * iy;
+      const vy = c * ix + d * iy;
+      const norm = Math.hypot(vx, vy);
+      if (norm < 1e-9) continue;
+      const length = 0.34;
+      const dx = (vx / norm) * length;
+      const dy = (vy / norm) * length;
+      drawVectorArrow(ctx, xScale(ix - dx / 2), yScale(iy - dy / 2), xScale(ix + dx / 2), yScale(iy + dy / 2), colors.vector, 1.05);
+    }
+  }
+
+  drawEigenvectorLines(ctx, result.phase.vectorLines, limit, xScale, yScale);
+
+  result.phase.trajectories.forEach((trajectory) => {
+    if (trajectory.length < 2) return;
+    ctx.save();
+    ctx.strokeStyle = colors.trajectory;
+    ctx.lineWidth = 2.4;
+    ctx.globalAlpha = 0.9;
+    ctx.beginPath();
+    trajectory.forEach((point, index) => {
+      const px = xScale(point.x);
+      const py = yScale(point.y);
+      if (index === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    });
+    ctx.stroke();
+    ctx.restore();
+
+    const end = trajectory[trajectory.length - 1];
+    const prev = trajectory[Math.max(0, trajectory.length - 4)];
+    drawVectorArrow(ctx, xScale(prev.x), yScale(prev.y), xScale(end.x), yScale(end.y), colors.trajectory, 1.5);
+  });
+
+  result.nullclines.forEach((line) => {
+    const [p, q] = line.coefficients;
+    const endpoints = lineEndpoints(p, q, limit);
+    if (endpoints.length < 2) return;
+    ctx.save();
+    ctx.strokeStyle = line.id === "dx" ? colors.nullclineX : colors.nullclineY;
+    ctx.globalAlpha = 0.35;
+    ctx.lineWidth = 2;
+    ctx.setLineDash(line.id === "dy" ? [8, 6] : []);
+    ctx.beginPath();
+    ctx.moveTo(xScale(endpoints[0][0]), yScale(endpoints[0][1]));
+    ctx.lineTo(xScale(endpoints[1][0]), yScale(endpoints[1][1]));
+    ctx.stroke();
+    ctx.restore();
+  });
+
+  drawOrigin(ctx, xScale, yScale);
+}
+
 async function init() {
   const response = await fetch("/api/models");
   const data = await response.json();
@@ -666,9 +1072,28 @@ els.playPauseButton.addEventListener("click", toggleAnimation);
 els.restartButton.addEventListener("click", restartAnimation);
 
 window.addEventListener("resize", () => {
-  if (!activeResult) return;
-  renderPhase(activeResult);
-  renderBifurcation(activeResult);
+  if (activeTab === "oneD" && activeResult) {
+    renderPhase(activeResult);
+    renderBifurcation(activeResult);
+  }
+  if (activeTab === "linear2d" && linear2dResult) {
+    renderLinear2d(linear2dResult);
+  }
+});
+
+els.oneDTabButton.addEventListener("click", () => setActiveTab("oneD"));
+els.linear2dTabButton.addEventListener("click", () => setActiveTab("linear2d"));
+
+els.linearCalculateButton.addEventListener("click", () => {
+  calculateLinear2d().catch((error) => setLinearError(error.message));
+});
+
+[els.linearAInput, els.linearBInput, els.linearCInput, els.linearDInput].forEach((input) => {
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      calculateLinear2d().catch((error) => setLinearError(error.message));
+    }
+  });
 });
 
 init().catch((error) => setError(error.message));
