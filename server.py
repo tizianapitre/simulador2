@@ -132,9 +132,10 @@ class ExpressionError(ValueError):
 
 
 class SafeExpression:
-    def __init__(self, expression: str):
+    def __init__(self, expression: str, variables: tuple[str, ...] = ("x", "r")):
         self.original = expression.strip()
         self.expression = self.original.replace("^", "**")
+        self.variables = set(variables)
         if not self.expression:
             raise ExpressionError("La expresión no puede estar vacía.")
 
@@ -151,14 +152,22 @@ class SafeExpression:
             if not isinstance(node, ALLOWED_AST_NODES):
                 raise ExpressionError(f"No se admite {node.__class__.__name__} en la expresión.")
             if isinstance(node, ast.Name):
-                if node.id not in {"x", "r", *SAFE_FUNCTIONS.keys(), *SAFE_CONSTANTS.keys()}:
-                    raise ExpressionError(f"Nombre no permitido: {node.id}. Usá solo x, r y funciones matemáticas.")
+                if node.id not in {*self.variables, *SAFE_FUNCTIONS.keys(), *SAFE_CONSTANTS.keys()}:
+                    allowed = ", ".join(sorted(self.variables))
+                    raise ExpressionError(f"Nombre no permitido: {node.id}. Usá solo {allowed} y funciones matemáticas.")
             if isinstance(node, ast.Call):
                 if not isinstance(node.func, ast.Name) or node.func.id not in SAFE_FUNCTIONS:
                     raise ExpressionError("Solo se admiten llamadas a funciones matemáticas permitidas.")
 
     def __call__(self, x: float, r: float) -> float:
-        env = {**SAFE_FUNCTIONS, **SAFE_CONSTANTS, "x": x, "r": r}
+        return self.evaluate(x=x, r=r)
+
+    def evaluate(self, **variables: float) -> float:
+        missing = self.variables - variables.keys()
+        if missing:
+            raise ValueError(f"Faltan variables: {', '.join(sorted(missing))}.")
+        env = {**SAFE_FUNCTIONS, **SAFE_CONSTANTS}
+        env.update({key: float(variables[key]) for key in self.variables})
         try:
             value = eval(self._code, {"__builtins__": {}}, env)
         except (ArithmeticError, ValueError, OverflowError) as exc:
@@ -546,6 +555,299 @@ def linear2d_analysis(payload: dict[str, Any]) -> dict[str, Any]:
             },
         ],
         "phase": {"range": [-5, 5], "trajectories": representative_trajectories(a, b, c, d), "vectorLines": vector_lines},
+    }
+
+
+def parse_nonlinear2d_payload(payload: dict[str, Any]) -> tuple[str, str, tuple[float, float], tuple[float, float]]:
+    x_expression = str(payload.get("xExpression") or "x*(1-y)")
+    y_expression = str(payload.get("yExpression") or "y*(x-1)")
+    x_range = parse_range(payload, "xRange", (-1.0, 4.0))
+    y_range = parse_range(payload, "yRange", (-1.0, 4.0))
+    return x_expression, y_expression, x_range, y_range
+
+
+def safe_eval2d(func: SafeExpression, x: float, y: float) -> float | None:
+    try:
+        value = func.evaluate(x=x, y=y)
+    except Exception:
+        return None
+    return value if math.isfinite(value) else None
+
+
+def field2d(
+    x_func: SafeExpression,
+    y_func: SafeExpression,
+    x: float,
+    y: float,
+) -> tuple[float, float] | None:
+    x_value = safe_eval2d(x_func, x, y)
+    y_value = safe_eval2d(y_func, x, y)
+    if not finite(x_value) or not finite(y_value):
+        return None
+    return x_value, y_value
+
+
+def interpolate_zero(
+    point_a: tuple[float, float],
+    value_a: float,
+    point_b: tuple[float, float],
+    value_b: float,
+) -> tuple[float, float]:
+    if abs(value_a - value_b) < 1e-14:
+        t = 0.5
+    else:
+        t = value_a / (value_a - value_b)
+    t = min(1.0, max(0.0, t))
+    return (point_a[0] + t * (point_b[0] - point_a[0]), point_a[1] + t * (point_b[1] - point_a[1]))
+
+
+def zero_contours(
+    func: SafeExpression,
+    x_range: tuple[float, float],
+    y_range: tuple[float, float],
+    samples: int = 88,
+) -> list[list[dict[str, float]]]:
+    x_min, x_max = x_range
+    y_min, y_max = y_range
+    xs = [x_min + (x_max - x_min) * i / samples for i in range(samples + 1)]
+    ys = [y_min + (y_max - y_min) * i / samples for i in range(samples + 1)]
+    values = [[safe_eval2d(func, x, y) for x in xs] for y in ys]
+    segments: list[list[dict[str, float]]] = []
+
+    for row in range(samples):
+        for col in range(samples):
+            corners = [
+                ((xs[col], ys[row]), values[row][col]),
+                ((xs[col + 1], ys[row]), values[row][col + 1]),
+                ((xs[col + 1], ys[row + 1]), values[row + 1][col + 1]),
+                ((xs[col], ys[row + 1]), values[row + 1][col]),
+            ]
+            if any(not finite(value) for _, value in corners):
+                continue
+
+            crossings: list[tuple[float, float]] = []
+            for first, second in ((0, 1), (1, 2), (2, 3), (3, 0)):
+                point_a, value_a = corners[first]
+                point_b, value_b = corners[second]
+                assert value_a is not None and value_b is not None
+                crosses = value_a == 0 or value_b == 0 or value_a * value_b < 0
+                if crosses:
+                    point = interpolate_zero(point_a, value_a, point_b, value_b)
+                    if not any(math.hypot(point[0] - other[0], point[1] - other[1]) < 1e-8 for other in crossings):
+                        crossings.append(point)
+
+            if len(crossings) >= 2:
+                for index in range(0, len(crossings) - 1, 2):
+                    start, end = crossings[index], crossings[index + 1]
+                    if math.hypot(start[0] - end[0], start[1] - end[1]) < 1e-10:
+                        continue
+                    segments.append(
+                        [
+                            {"x": clean_number(start[0]), "y": clean_number(start[1])},
+                            {"x": clean_number(end[0]), "y": clean_number(end[1])},
+                        ]
+                    )
+    return segments
+
+
+def jacobian2d(
+    x_func: SafeExpression,
+    y_func: SafeExpression,
+    x: float,
+    y: float,
+    x_range: tuple[float, float],
+    y_range: tuple[float, float],
+) -> tuple[float, float, float, float] | None:
+    hx = max(1e-5, (x_range[1] - x_range[0]) * 1e-6, abs(x) * 1e-6)
+    hy = max(1e-5, (y_range[1] - y_range[0]) * 1e-6, abs(y) * 1e-6)
+    fx_plus = safe_eval2d(x_func, x + hx, y)
+    fx_minus = safe_eval2d(x_func, x - hx, y)
+    fx_y_plus = safe_eval2d(x_func, x, y + hy)
+    fx_y_minus = safe_eval2d(x_func, x, y - hy)
+    fy_x_plus = safe_eval2d(y_func, x + hx, y)
+    fy_x_minus = safe_eval2d(y_func, x - hx, y)
+    fy_plus = safe_eval2d(y_func, x, y + hy)
+    fy_minus = safe_eval2d(y_func, x, y - hy)
+    values = [fx_plus, fx_minus, fx_y_plus, fx_y_minus, fy_x_plus, fy_x_minus, fy_plus, fy_minus]
+    if any(not finite(value) for value in values):
+        return None
+    assert all(value is not None for value in values)
+    return (
+        (fx_plus - fx_minus) / (2.0 * hx),
+        (fx_y_plus - fx_y_minus) / (2.0 * hy),
+        (fy_x_plus - fy_x_minus) / (2.0 * hx),
+        (fy_plus - fy_minus) / (2.0 * hy),
+    )
+
+
+def newton_equilibrium(
+    x_func: SafeExpression,
+    y_func: SafeExpression,
+    seed_x: float,
+    seed_y: float,
+    x_range: tuple[float, float],
+    y_range: tuple[float, float],
+) -> tuple[float, float] | None:
+    x_value, y_value = seed_x, seed_y
+    for _ in range(36):
+        field = field2d(x_func, y_func, x_value, y_value)
+        if field is None:
+            return None
+        fx, fy = field
+        if math.hypot(fx, fy) < 1e-10:
+            break
+        jacobian = jacobian2d(x_func, y_func, x_value, y_value, x_range, y_range)
+        if jacobian is None:
+            return None
+        a, b, c, d = jacobian
+        determinant = a * d - b * c
+        if abs(determinant) < 1e-12:
+            return None
+        dx = (-fx * d + b * fy) / determinant
+        dy = (c * fx - a * fy) / determinant
+        step_scale = 1.0
+        while step_scale >= 1 / 16:
+            next_x = x_value + step_scale * dx
+            next_y = y_value + step_scale * dy
+            if (
+                x_range[0] - 0.2 * (x_range[1] - x_range[0]) <= next_x <= x_range[1] + 0.2 * (x_range[1] - x_range[0])
+                and y_range[0] - 0.2 * (y_range[1] - y_range[0]) <= next_y <= y_range[1] + 0.2 * (y_range[1] - y_range[0])
+            ):
+                x_value, y_value = next_x, next_y
+                break
+            step_scale *= 0.5
+        else:
+            return None
+
+    if not (x_range[0] <= x_value <= x_range[1] and y_range[0] <= y_value <= y_range[1]):
+        return None
+    field = field2d(x_func, y_func, x_value, y_value)
+    if field is None or math.hypot(field[0], field[1]) > 1e-6:
+        return None
+    return x_value, y_value
+
+
+def classify_nonlinear_equilibrium(
+    jacobian: tuple[float, float, float, float] | None,
+) -> dict[str, Any]:
+    if jacobian is None:
+        return {
+            "type": "indeterminado",
+            "stability": "unknown",
+            "detail": "No se pudo calcular el Jacobiano numérico.",
+            "trace": None,
+            "determinant": None,
+            "discriminant": None,
+            "eigenvalues": [],
+        }
+    a, b, c, d = jacobian
+    trace = a + d
+    determinant = a * d - b * c
+    discriminant = trace * trace - 4.0 * determinant
+    classification = classify_linear_equilibrium(trace, determinant, discriminant, a, b, c, d)
+    if discriminant >= 0:
+        root = math.sqrt(max(0.0, discriminant))
+        eigenvalues = [complex((trace + root) / 2.0, 0), complex((trace - root) / 2.0, 0)]
+    else:
+        eigenvalues = [complex(trace / 2.0, math.sqrt(-discriminant) / 2.0), complex(trace / 2.0, -math.sqrt(-discriminant) / 2.0)]
+    return {
+        **classification,
+        "trace": clean_number(trace),
+        "determinant": clean_number(determinant),
+        "discriminant": clean_number(discriminant),
+        "eigenvalues": [scalar_payload(value) for value in eigenvalues],
+    }
+
+
+def find_nonlinear_equilibria(
+    x_func: SafeExpression,
+    y_func: SafeExpression,
+    x_range: tuple[float, float],
+    y_range: tuple[float, float],
+) -> list[dict[str, Any]]:
+    seeds: list[tuple[float, float]] = []
+    grid = 22
+    for i in range(grid + 1):
+        x = x_range[0] + (x_range[1] - x_range[0]) * i / grid
+        for j in range(grid + 1):
+            y = y_range[0] + (y_range[1] - y_range[0]) * j / grid
+            seeds.append((x, y))
+    if x_range[0] <= 0 <= x_range[1] and y_range[0] <= 0 <= y_range[1]:
+        seeds.append((0.0, 0.0))
+
+    roots: list[tuple[float, float]] = []
+    merge_tolerance = max(x_range[1] - x_range[0], y_range[1] - y_range[0]) * 8e-4
+    for seed_x, seed_y in seeds:
+        root = newton_equilibrium(x_func, y_func, seed_x, seed_y, x_range, y_range)
+        if root is None:
+            continue
+        if not any(math.hypot(root[0] - other[0], root[1] - other[1]) <= merge_tolerance for other in roots):
+            roots.append(root)
+
+    items: list[dict[str, Any]] = []
+    for x_value, y_value in sorted(roots, key=lambda point: (point[0], point[1])):
+        jacobian = jacobian2d(x_func, y_func, x_value, y_value, x_range, y_range)
+        classification = classify_nonlinear_equilibrium(jacobian)
+        items.append(
+            {
+                "x": clean_number(x_value),
+                "y": clean_number(y_value),
+                "classification": classification,
+                "jacobian": None
+                if jacobian is None
+                else [[clean_number(jacobian[0]), clean_number(jacobian[1])], [clean_number(jacobian[2]), clean_number(jacobian[3])]],
+            }
+        )
+    return items[:24]
+
+
+def sample_vector_field(
+    x_func: SafeExpression,
+    y_func: SafeExpression,
+    x_range: tuple[float, float],
+    y_range: tuple[float, float],
+    samples: int = 17,
+) -> list[dict[str, float]]:
+    points: list[dict[str, float]] = []
+    for i in range(samples):
+        x = x_range[0] + (x_range[1] - x_range[0]) * (i + 0.5) / samples
+        for j in range(samples):
+            y = y_range[0] + (y_range[1] - y_range[0]) * (j + 0.5) / samples
+            value = field2d(x_func, y_func, x, y)
+            if value is None:
+                continue
+            vx, vy = value
+            if math.hypot(vx, vy) < 1e-12:
+                continue
+            points.append({"x": clean_number(x), "y": clean_number(y), "vx": clean_number(vx), "vy": clean_number(vy)})
+    return points
+
+
+def nonlinear2d_analysis(payload: dict[str, Any]) -> dict[str, Any]:
+    x_expression, y_expression, x_range, y_range = parse_nonlinear2d_payload(payload)
+    x_func = SafeExpression(x_expression, ("x", "y"))
+    y_func = SafeExpression(y_expression, ("x", "y"))
+
+    return {
+        "expressions": {"x": x_func.expression, "y": y_func.expression},
+        "xRange": list(x_range),
+        "yRange": list(y_range),
+        "equilibria": find_nonlinear_equilibria(x_func, y_func, x_range, y_range),
+        "nullclines": [
+            {
+                "id": "dx",
+                "label": "x' = 0",
+                "expression": x_func.expression,
+                "segments": zero_contours(x_func, x_range, y_range),
+            },
+            {
+                "id": "dy",
+                "label": "y' = 0",
+                "expression": y_func.expression,
+                "segments": zero_contours(y_func, x_range, y_range),
+            },
+        ],
+        "vectorField": sample_vector_field(x_func, y_func, x_range, y_range),
     }
 
 
@@ -1035,6 +1337,7 @@ class SimulatorHandler(SimpleHTTPRequestHandler):
             self.path.startswith("/api/analyze")
             or self.path.startswith("/api/frame")
             or self.path.startswith("/api/linear2d")
+            or self.path.startswith("/api/nonlinear2d")
         ):
             self.send_error(HTTPStatus.NOT_FOUND)
             return
@@ -1042,7 +1345,9 @@ class SimulatorHandler(SimpleHTTPRequestHandler):
             content_length = int(self.headers.get("Content-Length", "0"))
             raw = self.rfile.read(content_length)
             payload = json.loads(raw.decode("utf-8") or "{}")
-            if self.path.startswith("/api/linear2d"):
+            if self.path.startswith("/api/nonlinear2d"):
+                result = nonlinear2d_analysis(payload)
+            elif self.path.startswith("/api/linear2d"):
                 result = linear2d_analysis(payload)
             elif self.path.startswith("/api/frame"):
                 result = frame(payload)

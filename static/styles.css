@@ -88,7 +88,7 @@ select {
 
 .tab-nav {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 8px;
 }
 
@@ -352,6 +352,10 @@ button:hover {
   grid-template-columns: 1fr;
 }
 
+#nonlinear2dWorkspace .chart-grid {
+  grid-template-columns: 1fr;
+}
+
 .chart-panel {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -435,6 +439,10 @@ button:hover {
 
 .origin-dot {
   background: var(--text);
+}
+
+.equilibrium-dot {
+  background: var(--unstable);
 }
 
 .linear-details-grid {
@@ -554,6 +562,11 @@ canvas {
   min-height: 520px;
 }
 
+#nonlinear2dWorkspace canvas {
+  aspect-ratio: 16 / 9;
+  min-height: 560px;
+}
+
 .error-box {
   margin: 0;
   border: 1px solid rgba(199, 71, 63, 0.35);
@@ -608,5 +621,10 @@ canvas {
   #linear2dWorkspace canvas {
     aspect-ratio: 1 / 1;
     min-height: 340px;
+  }
+
+  #nonlinear2dWorkspace canvas {
+    aspect-ratio: 1 / 1;
+    min-height: 360px;
   }
 }

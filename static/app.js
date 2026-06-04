@@ -19,10 +19,13 @@ const els = {
   errorBox: document.querySelector("#errorBox"),
   oneDTabButton: document.querySelector("#oneDTabButton"),
   linear2dTabButton: document.querySelector("#linear2dTabButton"),
+  nonlinear2dTabButton: document.querySelector("#nonlinear2dTabButton"),
   oneDControls: document.querySelector("#oneDControls"),
   linear2dControls: document.querySelector("#linear2dControls"),
+  nonlinear2dControls: document.querySelector("#nonlinear2dControls"),
   oneDWorkspace: document.querySelector("#oneDWorkspace"),
   linear2dWorkspace: document.querySelector("#linear2dWorkspace"),
+  nonlinear2dWorkspace: document.querySelector("#nonlinear2dWorkspace"),
   linearAInput: document.querySelector("#linearAInput"),
   linearBInput: document.querySelector("#linearBInput"),
   linearCInput: document.querySelector("#linearCInput"),
@@ -36,6 +39,19 @@ const els = {
   nullclineCanvas: document.querySelector("#nullclineCanvas"),
   linearPhaseCanvas: document.querySelector("#linearPhaseCanvas"),
   linearErrorBox: document.querySelector("#linearErrorBox"),
+  nonlinearXExpressionInput: document.querySelector("#nonlinearXExpressionInput"),
+  nonlinearYExpressionInput: document.querySelector("#nonlinearYExpressionInput"),
+  nonlinearXMinInput: document.querySelector("#nonlinearXMinInput"),
+  nonlinearXMaxInput: document.querySelector("#nonlinearXMaxInput"),
+  nonlinearYMinInput: document.querySelector("#nonlinearYMinInput"),
+  nonlinearYMaxInput: document.querySelector("#nonlinearYMaxInput"),
+  nonlinearCalculateButton: document.querySelector("#nonlinearCalculateButton"),
+  nonlinearSystemSummary: document.querySelector("#nonlinearSystemSummary"),
+  nonlinearEquilibriaSummary: document.querySelector("#nonlinearEquilibriaSummary"),
+  nonlinearNullclineSummary: document.querySelector("#nonlinearNullclineSummary"),
+  nonlinearEquilibriaList: document.querySelector("#nonlinearEquilibriaList"),
+  nonlinearPhaseCanvas: document.querySelector("#nonlinearPhaseCanvas"),
+  nonlinearErrorBox: document.querySelector("#nonlinearErrorBox"),
 };
 
 const colors = {
@@ -67,6 +83,7 @@ let frameInFlight = false;
 let queuedFrameParameter = null;
 let activeTab = "oneD";
 let linear2dResult = null;
+let nonlinear2dResult = null;
 
 function formatNumber(value) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return "n/a";
@@ -101,6 +118,11 @@ function setLinearError(message) {
   els.linearErrorBox.textContent = message || "";
 }
 
+function setNonlinearError(message) {
+  els.nonlinearErrorBox.hidden = !message;
+  els.nonlinearErrorBox.textContent = message || "";
+}
+
 function setActiveTab(tab) {
   activeTab = tab;
   if (tab !== "oneD") {
@@ -109,10 +131,13 @@ function setActiveTab(tab) {
   [
     [els.oneDTabButton, tab === "oneD"],
     [els.linear2dTabButton, tab === "linear2d"],
+    [els.nonlinear2dTabButton, tab === "nonlinear2d"],
     [els.oneDControls, tab === "oneD"],
     [els.linear2dControls, tab === "linear2d"],
+    [els.nonlinear2dControls, tab === "nonlinear2d"],
     [els.oneDWorkspace, tab === "oneD"],
     [els.linear2dWorkspace, tab === "linear2d"],
+    [els.nonlinear2dWorkspace, tab === "nonlinear2d"],
   ].forEach(([element, isActive]) => {
     element.classList.toggle("active", isActive);
   });
@@ -122,6 +147,12 @@ function setActiveTab(tab) {
       renderLinear2d(linear2dResult);
     } else {
       calculateLinear2d().catch((error) => setLinearError(error.message));
+    }
+  } else if (tab === "nonlinear2d") {
+    if (nonlinear2dResult) {
+      renderNonlinear2d(nonlinear2dResult);
+    } else {
+      calculateNonlinear2d().catch((error) => setNonlinearError(error.message));
     }
   } else if (activeResult) {
     renderPhase(activeResult);
@@ -1014,6 +1045,199 @@ function renderLinearPhase(result) {
   drawOrigin(ctx, xScale, yScale);
 }
 
+function nonlinear2dPayload() {
+  const xRange = [Number(els.nonlinearXMinInput.value), Number(els.nonlinearXMaxInput.value)];
+  const yRange = [Number(els.nonlinearYMinInput.value), Number(els.nonlinearYMaxInput.value)];
+  if (!els.nonlinearXExpressionInput.value.trim() || !els.nonlinearYExpressionInput.value.trim()) {
+    throw new Error("Ingresá las expresiones de x punto e y punto.");
+  }
+  if (![...xRange, ...yRange].every(Number.isFinite)) {
+    throw new Error("Los rangos del plano deben ser numéricos.");
+  }
+  if (xRange[0] >= xRange[1] || yRange[0] >= yRange[1]) {
+    throw new Error("Cada rango debe tener mínimo menor que máximo.");
+  }
+  return {
+    xExpression: els.nonlinearXExpressionInput.value,
+    yExpression: els.nonlinearYExpressionInput.value,
+    xRange,
+    yRange,
+  };
+}
+
+async function calculateNonlinear2d() {
+  setNonlinearError("");
+  const response = await fetch("/api/nonlinear2d", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(nonlinear2dPayload()),
+  });
+  const result = await response.json();
+  if (!response.ok) {
+    throw new Error(result.error || "No se pudo analizar el sistema no lineal.");
+  }
+  nonlinear2dResult = result;
+  renderNonlinear2d(result);
+}
+
+function scheduleNonlinear2d() {
+  window.clearTimeout(debounceHandle);
+  debounceHandle = window.setTimeout(() => {
+    calculateNonlinear2d().catch((error) => setNonlinearError(error.message));
+  }, 220);
+}
+
+function renderNonlinear2d(result) {
+  els.nonlinearSystemSummary.replaceChildren(
+    pill(`x' = ${result.expressions.x}`),
+    pill(`y' = ${result.expressions.y}`),
+    pill(`${formatNumber(result.xRange[0])} <= x <= ${formatNumber(result.xRange[1])}`),
+    pill(`${formatNumber(result.yRange[0])} <= y <= ${formatNumber(result.yRange[1])}`),
+  );
+
+  els.nonlinearEquilibriaSummary.replaceChildren();
+  if (!result.equilibria.length) {
+    els.nonlinearEquilibriaSummary.append(pill("sin equilibrios visibles", "unknown"));
+  } else {
+    result.equilibria.forEach((item) => {
+      els.nonlinearEquilibriaSummary.append(
+        pill(
+          `(${formatNumber(item.x)}, ${formatNumber(item.y)}) · ${item.classification.type}`,
+          item.classification.stability,
+        ),
+      );
+    });
+  }
+
+  els.nonlinearNullclineSummary.replaceChildren(
+    pill(`x'=0: ${result.nullclines[0].segments.length} tramos`),
+    pill(`y'=0: ${result.nullclines[1].segments.length} tramos`),
+  );
+
+  els.nonlinearEquilibriaList.replaceChildren();
+  if (!result.equilibria.length) {
+    const row = document.createElement("div");
+    row.className = "result-row";
+    row.textContent = "No se encontraron intersecciones de nulclinas dentro del rango.";
+    els.nonlinearEquilibriaList.append(row);
+  } else {
+    result.equilibria.forEach((item) => {
+      const row = document.createElement("div");
+      row.className = "result-row";
+      const title = document.createElement("strong");
+      title.textContent = `(${formatNumber(item.x)}, ${formatNumber(item.y)}) · ${item.classification.type}`;
+      const detail = document.createElement("span");
+      detail.textContent = `${item.classification.detail} tr=${formatNumber(item.classification.trace)}, det=${formatNumber(
+        item.classification.determinant,
+      )}`;
+      row.append(title, detail);
+      els.nonlinearEquilibriaList.append(row);
+    });
+  }
+
+  renderNonlinearPhase(result);
+}
+
+function drawPlanarGrid(canvas, xRange, yRange) {
+  const { ctx, width, height } = resizeCanvas(canvas);
+  ctx.clearRect(0, 0, width, height);
+  const plot = { left: 54, right: width - 22, top: 22, bottom: height - 42 };
+  const xMin = xRange[0];
+  const xMax = xRange[1];
+  const yMin = yRange[0];
+  const yMax = yRange[1];
+  const xScale = (x) => plot.left + ((x - xMin) / (xMax - xMin)) * (plot.right - plot.left);
+  const yScale = (y) => plot.bottom - ((y - yMin) / (yMax - yMin)) * (plot.bottom - plot.top);
+  drawGrid(ctx, plot, ticks(xMin, xMax), ticks(yMin, yMax), xScale, yScale);
+
+  ctx.save();
+  ctx.strokeStyle = colors.axis;
+  ctx.lineWidth = 1.35;
+  if (yMin <= 0 && yMax >= 0) {
+    ctx.beginPath();
+    ctx.moveTo(plot.left, yScale(0));
+    ctx.lineTo(plot.right, yScale(0));
+    ctx.stroke();
+  }
+  if (xMin <= 0 && xMax >= 0) {
+    ctx.beginPath();
+    ctx.moveTo(xScale(0), plot.top);
+    ctx.lineTo(xScale(0), plot.bottom);
+    ctx.stroke();
+  }
+  ctx.fillStyle = colors.text;
+  ctx.font = "13px Inter, system-ui, sans-serif";
+  ctx.textAlign = "right";
+  ctx.fillText("x", plot.right, Math.min(plot.bottom - 6, Math.max(plot.top + 14, yScale(0) - 8)));
+  ctx.textAlign = "left";
+  ctx.fillText("y", Math.min(plot.right - 20, Math.max(plot.left + 8, xScale(0) + 8)), plot.top + 14);
+  ctx.restore();
+
+  return { ctx, plot, xScale, yScale, xRange, yRange };
+}
+
+function renderNonlinearPhase(result) {
+  const { ctx, plot, xScale, yScale, xRange, yRange } = drawPlanarGrid(
+    els.nonlinearPhaseCanvas,
+    result.xRange,
+    result.yRange,
+  );
+  const spanX = xRange[1] - xRange[0];
+  const spanY = yRange[1] - yRange[0];
+  const arrowLength = Math.min(spanX, spanY) / 30;
+
+  result.vectorField.forEach((point) => {
+    const norm = Math.hypot(point.vx, point.vy);
+    if (norm < 1e-12) return;
+    const dx = (point.vx / norm) * arrowLength;
+    const dy = (point.vy / norm) * arrowLength;
+    drawVectorArrow(
+      ctx,
+      xScale(point.x - dx / 2),
+      yScale(point.y - dy / 2),
+      xScale(point.x + dx / 2),
+      yScale(point.y + dy / 2),
+      colors.vector,
+      1.05,
+    );
+  });
+
+  result.nullclines.forEach((line) => {
+    ctx.save();
+    ctx.strokeStyle = line.id === "dx" ? colors.nullclineX : colors.nullclineY;
+    ctx.lineWidth = 2.4;
+    ctx.globalAlpha = 0.95;
+    ctx.setLineDash(line.id === "dy" ? [8, 6] : []);
+    line.segments.forEach((segment) => {
+      if (segment.length < 2) return;
+      ctx.beginPath();
+      ctx.moveTo(xScale(segment[0].x), yScale(segment[0].y));
+      ctx.lineTo(xScale(segment[1].x), yScale(segment[1].y));
+      ctx.stroke();
+    });
+    ctx.restore();
+  });
+
+  result.equilibria.forEach((item) => {
+    const x = xScale(item.x);
+    const y = yScale(item.y);
+    ctx.save();
+    ctx.fillStyle = colors[item.classification.stability] || colors.unknown;
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.arc(x, y, 7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = colors.text;
+    ctx.font = "700 12px Inter, system-ui, sans-serif";
+    ctx.textAlign = x > (plot.left + plot.right) / 2 ? "right" : "left";
+    ctx.textBaseline = y > (plot.top + plot.bottom) / 2 ? "bottom" : "top";
+    ctx.fillText(`(${formatNumber(item.x)}, ${formatNumber(item.y)})`, x + (ctx.textAlign === "right" ? -10 : 10), y + 10);
+    ctx.restore();
+  });
+}
+
 async function init() {
   const response = await fetch("/api/models");
   const data = await response.json();
@@ -1079,10 +1303,14 @@ window.addEventListener("resize", () => {
   if (activeTab === "linear2d" && linear2dResult) {
     renderLinear2d(linear2dResult);
   }
+  if (activeTab === "nonlinear2d" && nonlinear2dResult) {
+    renderNonlinear2d(nonlinear2dResult);
+  }
 });
 
 els.oneDTabButton.addEventListener("click", () => setActiveTab("oneD"));
 els.linear2dTabButton.addEventListener("click", () => setActiveTab("linear2d"));
+els.nonlinear2dTabButton.addEventListener("click", () => setActiveTab("nonlinear2d"));
 
 els.linearCalculateButton.addEventListener("click", () => {
   calculateLinear2d().catch((error) => setLinearError(error.message));
@@ -1094,6 +1322,28 @@ els.linearCalculateButton.addEventListener("click", () => {
       calculateLinear2d().catch((error) => setLinearError(error.message));
     }
   });
+});
+
+[els.nonlinearXExpressionInput, els.nonlinearYExpressionInput].forEach((input) => {
+  input.addEventListener("input", scheduleNonlinear2d);
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      calculateNonlinear2d().catch((error) => setNonlinearError(error.message));
+    }
+  });
+});
+
+[
+  els.nonlinearXMinInput,
+  els.nonlinearXMaxInput,
+  els.nonlinearYMinInput,
+  els.nonlinearYMaxInput,
+].forEach((input) => {
+  input.addEventListener("input", scheduleNonlinear2d);
+});
+
+els.nonlinearCalculateButton.addEventListener("click", () => {
+  calculateNonlinear2d().catch((error) => setNonlinearError(error.message));
 });
 
 init().catch((error) => setError(error.message));

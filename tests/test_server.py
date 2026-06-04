@@ -60,5 +60,25 @@ class Linear2DAnalysisTests(unittest.TestCase):
             server.linear2d_analysis({"a": "x", "b": 0, "c": 0, "d": 1})
 
 
+class Nonlinear2DAnalysisTests(unittest.TestCase):
+    def test_finds_predator_prey_equilibrium_and_nullclines(self) -> None:
+        result = server.nonlinear2d_analysis(
+            {
+                "xExpression": "x*(1-y)",
+                "yExpression": "y*(x-1)",
+                "xRange": [-1, 4],
+                "yRange": [-1, 4],
+            }
+        )
+        self.assertTrue(any(abs(item["x"] - 1) < 1e-5 and abs(item["y"] - 1) < 1e-5 for item in result["equilibria"]))
+        self.assertEqual(len(result["nullclines"]), 2)
+        self.assertTrue(result["nullclines"][0]["segments"])
+        self.assertTrue(result["vectorField"])
+
+    def test_rejects_unknown_variables(self) -> None:
+        with self.assertRaises(server.ExpressionError):
+            server.nonlinear2d_analysis({"xExpression": "z + x", "yExpression": "y", "xRange": [-1, 1], "yRange": [-1, 1]})
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Simulador de sistemas autonomos</title>
-    <link rel="stylesheet" href="/static/styles.css?v=4" />
+    <link rel="stylesheet" href="/static/styles.css?v=5" />
   </head>
   <body>
     <main class="app-shell">
@@ -20,6 +20,7 @@
         <nav class="tab-nav" aria-label="Secciones">
           <button id="oneDTabButton" class="tab-button active" type="button" data-tab="oneD">1D autonomo</button>
           <button id="linear2dTabButton" class="tab-button" type="button" data-tab="linear2d">Sistemas 2D</button>
+          <button id="nonlinear2dTabButton" class="tab-button" type="button" data-tab="nonlinear2d">No lineales</button>
         </nav>
 
         <div id="oneDControls" class="tab-view active">
@@ -107,6 +108,43 @@
             <p>dx/dt = ax + by</p>
             <p>dy/dt = cx + dy</p>
             <p>Rango inicial del plano: -5 <= x,y <= 5.</p>
+          </section>
+        </div>
+
+        <div id="nonlinear2dControls" class="tab-view">
+          <section class="panel">
+            <h2>Sistema no lineal</h2>
+            <label class="field">
+              <span>x punto</span>
+              <input id="nonlinearXExpressionInput" spellcheck="false" autocomplete="off" value="x*(1-y)" />
+            </label>
+            <label class="field">
+              <span>y punto</span>
+              <input id="nonlinearYExpressionInput" spellcheck="false" autocomplete="off" value="y*(x-1)" />
+            </label>
+            <button id="nonlinearCalculateButton" type="button">Calcular</button>
+          </section>
+
+          <section class="panel">
+            <h2>Rango del plano</h2>
+            <div class="two-col">
+              <label class="field">
+                <span>x min</span>
+                <input id="nonlinearXMinInput" type="number" step="0.25" value="-1" />
+              </label>
+              <label class="field">
+                <span>x max</span>
+                <input id="nonlinearXMaxInput" type="number" step="0.25" value="4" />
+              </label>
+              <label class="field">
+                <span>y min</span>
+                <input id="nonlinearYMinInput" type="number" step="0.25" value="-1" />
+              </label>
+              <label class="field">
+                <span>y max</span>
+                <input id="nonlinearYMaxInput" type="number" step="0.25" value="4" />
+              </label>
+            </div>
           </section>
         </div>
       </aside>
@@ -216,9 +254,49 @@
 
           <p id="linearErrorBox" class="error-box" hidden></p>
         </div>
+
+        <div id="nonlinear2dWorkspace" class="tab-view workspace-view">
+          <section class="status-strip nonlinear-status" aria-live="polite">
+            <div>
+              <span class="eyebrow">Sistema</span>
+              <div id="nonlinearSystemSummary" class="summary-list"></div>
+            </div>
+            <div>
+              <span class="eyebrow">Equilibrios</span>
+              <div id="nonlinearEquilibriaSummary" class="summary-list"></div>
+            </div>
+            <div>
+              <span class="eyebrow">Nulclinas</span>
+              <div id="nonlinearNullclineSummary" class="summary-list"></div>
+            </div>
+          </section>
+
+          <section class="chart-grid nonlinear-chart-grid">
+            <article class="chart-panel">
+              <div class="chart-header">
+                <h2>Nulclinas y campo vectorial</h2>
+                <div class="legend">
+                  <span><i class="line nullcline-x"></i>x' = 0</span>
+                  <span><i class="line nullcline-y"></i>y' = 0</span>
+                  <span><i class="dot equilibrium-dot"></i>equilibrio</span>
+                </div>
+              </div>
+              <canvas id="nonlinearPhaseCanvas" width="960" height="620"></canvas>
+            </article>
+          </section>
+
+          <article class="chart-panel result-panel">
+            <div class="chart-header">
+              <h2>Detalle de equilibrios</h2>
+            </div>
+            <div id="nonlinearEquilibriaList" class="result-list"></div>
+          </article>
+
+          <p id="nonlinearErrorBox" class="error-box" hidden></p>
+        </div>
       </section>
     </main>
 
-    <script src="/static/app.js?v=4" defer></script>
+    <script src="/static/app.js?v=5" defer></script>
   </body>
 </html>
