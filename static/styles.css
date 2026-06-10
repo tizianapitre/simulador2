@@ -88,7 +88,7 @@ select {
 
 .tab-nav {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 8px;
 }
 
@@ -356,6 +356,14 @@ button:hover {
   grid-template-columns: 1fr;
 }
 
+#nonhomogeneous2dWorkspace .chart-grid {
+  grid-template-columns: 1fr;
+}
+
+.nonhomogeneous-status {
+  grid-template-columns: repeat(4, 1fr);
+}
+
 .chart-panel {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -445,6 +453,10 @@ button:hover {
   background: var(--unstable);
 }
 
+.particular-dot {
+  background: #f97316;
+}
+
 .linear-details-grid {
   display: grid;
   grid-template-columns: 1fr 1.3fr;
@@ -458,6 +470,10 @@ button:hover {
 .result-list {
   display: grid;
   gap: 10px;
+}
+
+.compact-result-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .result-row {
@@ -567,6 +583,11 @@ canvas {
   min-height: 560px;
 }
 
+#nonhomogeneous2dWorkspace canvas {
+  aspect-ratio: 16 / 9;
+  min-height: 560px;
+}
+
 .error-box {
   margin: 0;
   border: 1px solid rgba(199, 71, 63, 0.35);
@@ -589,7 +610,9 @@ canvas {
 
   .status-strip,
   .chart-grid,
-  .linear-details-grid {
+  .linear-details-grid,
+  .nonhomogeneous-status,
+  .compact-result-list {
     grid-template-columns: 1fr;
   }
 }
@@ -624,6 +647,11 @@ canvas {
   }
 
   #nonlinear2dWorkspace canvas {
+    aspect-ratio: 1 / 1;
+    min-height: 360px;
+  }
+
+  #nonhomogeneous2dWorkspace canvas {
     aspect-ratio: 1 / 1;
     min-height: 360px;
   }

@@ -851,6 +851,374 @@ def nonlinear2d_analysis(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def parse_nonhomogeneous2d_payload(
+    payload: dict[str, Any],
+) -> tuple[float, float, float, float, str, str, str, float, float, tuple[float, float], tuple[float, float], tuple[float, float]]:
+    a, b, c, d = parse_linear2d_payload(payload)
+    forcing_type = str(payload.get("forcingType") or "constant")
+    allowed_types = {"constant", "exponential", "sinusoidal", "polynomial", "custom"}
+    if forcing_type not in allowed_types:
+        raise ValueError("La forma de f(t) no es valida.")
+    fx_expression = str(payload.get("fxExpression") or "1")
+    fy_expression = str(payload.get("fyExpression") or "0")
+    try:
+        lambda_value = float(payload.get("lambda", 0.0))
+        time = float(payload.get("time", 0.0))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("lambda y t deben ser numericos.") from exc
+    if not math.isfinite(lambda_value) or not math.isfinite(time):
+        raise ValueError("lambda y t deben ser finitos.")
+    t_range = parse_range(payload, "tRange", (0.0, 6.0))
+    if t_range[0] < 0:
+        raise ValueError("El rango temporal debe comenzar en un valor no negativo.")
+    x_range = parse_range(payload, "xRange", (-5.0, 5.0))
+    y_range = parse_range(payload, "yRange", (-5.0, 5.0))
+    return a, b, c, d, forcing_type, fx_expression, fy_expression, lambda_value, time, t_range, x_range, y_range
+
+
+def safe_eval_time(func: SafeExpression, time: float) -> float | None:
+    try:
+        value = func.evaluate(t=time)
+    except Exception:
+        return None
+    return value if math.isfinite(value) else None
+
+
+def forcing_at(x_func: SafeExpression, y_func: SafeExpression, time: float) -> tuple[float, float] | None:
+    x_value = safe_eval_time(x_func, time)
+    y_value = safe_eval_time(y_func, time)
+    if not finite(x_value) or not finite(y_value):
+        return None
+    assert x_value is not None and y_value is not None
+    return x_value, y_value
+
+
+def derivative_time(func: SafeExpression, time: float = 0.0) -> float | None:
+    h = 1e-5
+    f_plus = safe_eval_time(func, time + h)
+    f_minus = safe_eval_time(func, time - h)
+    if not finite(f_plus) or not finite(f_minus):
+        return None
+    assert f_plus is not None and f_minus is not None
+    return (f_plus - f_minus) / (2.0 * h)
+
+
+def solve_2x2(p: float, q: float, r: float, s: float, u: float, v: float) -> tuple[float, float] | None:
+    determinant = p * s - q * r
+    if abs(determinant) < 1e-10:
+        return None
+    return ((u * s - q * v) / determinant, (p * v - u * r) / determinant)
+
+
+def solve_linear_system(matrix: list[list[float]], values: list[float]) -> list[float] | None:
+    size = len(values)
+    augmented = [row[:] + [values[index]] for index, row in enumerate(matrix)]
+    for col in range(size):
+        pivot = max(range(col, size), key=lambda row: abs(augmented[row][col]))
+        if abs(augmented[pivot][col]) < 1e-10:
+            return None
+        augmented[col], augmented[pivot] = augmented[pivot], augmented[col]
+        divisor = augmented[col][col]
+        for j in range(col, size + 1):
+            augmented[col][j] /= divisor
+        for row in range(size):
+            if row == col:
+                continue
+            factor = augmented[row][col]
+            for j in range(col, size + 1):
+                augmented[row][j] -= factor * augmented[col][j]
+    return [augmented[row][size] for row in range(size)]
+
+
+def nonhomogeneous_particular(
+    a: float,
+    b: float,
+    c: float,
+    d: float,
+    forcing_type: str,
+    x_func: SafeExpression,
+    y_func: SafeExpression,
+    lambda_value: float,
+    time: float,
+) -> dict[str, Any]:
+    current_forcing = forcing_at(x_func, y_func, time)
+    base_forcing = forcing_at(x_func, y_func, 0.0)
+    empty_point = None
+
+    if forcing_type == "constant":
+        if base_forcing is None:
+            return {"kind": "unknown", "summary": "f(t) no se pudo evaluar como constante.", "point": empty_point}
+        solution = solve_2x2(a, b, c, d, -base_forcing[0], -base_forcing[1])
+        if solution is None:
+            return {
+                "kind": "degenerate",
+                "summary": "A no es invertible: puede no haber equilibrio unico o puede haber una recta de particulares.",
+                "point": empty_point,
+            }
+        return {
+            "kind": "constant",
+            "summary": "Constante: el equilibrio se desplaza y cumple A xp = -b.",
+            "point": {"x": clean_number(solution[0]), "y": clean_number(solution[1])},
+            "formula": "A xp = -b",
+        }
+
+    if forcing_type == "exponential":
+        if base_forcing is None:
+            return {"kind": "unknown", "summary": "No se pudo evaluar el vector v de e^(lambda t) v.", "point": empty_point}
+        solution = solve_2x2(lambda_value - a, -b, -c, lambda_value - d, base_forcing[0], base_forcing[1])
+        if solution is None:
+            return {
+                "kind": "resonant",
+                "summary": "Resonancia: lambda coincide con un autovalor y puede aparecer t e^(lambda t).",
+                "point": empty_point,
+                "formula": "(lambda I - A) w = v",
+            }
+        scale = math.exp(lambda_value * time)
+        return {
+            "kind": "exponential",
+            "summary": "Exponencial: Xp(t) = e^(lambda t) w, con (lambda I - A)w = v.",
+            "point": {"x": clean_number(scale * solution[0]), "y": clean_number(scale * solution[1])},
+            "formula": "(lambda I - A) w = v",
+        }
+
+    if forcing_type == "sinusoidal":
+        if base_forcing is None:
+            return {"kind": "unknown", "summary": "No se pudo evaluar el termino senoidal.", "point": empty_point}
+        derivative_x = derivative_time(x_func, 0.0)
+        derivative_y = derivative_time(y_func, 0.0)
+        if derivative_x is None or derivative_y is None:
+            return {"kind": "unknown", "summary": "No se pudo estimar la componente seno de f(t).", "point": empty_point}
+        # Xp = P cos(t) + Q sin(t).  Q - AP = u and -P - AQ = v.
+        matrix = [
+            [-a, -b, 1.0, 0.0],
+            [-c, -d, 0.0, 1.0],
+            [-1.0, 0.0, -a, -b],
+            [0.0, -1.0, -c, -d],
+        ]
+        solution = solve_linear_system(matrix, [base_forcing[0], base_forcing[1], derivative_x, derivative_y])
+        if solution is None:
+            return {
+                "kind": "resonant",
+                "summary": "Caso resonante: la particular periodica simple puede no existir.",
+                "point": empty_point,
+            }
+        p1, p2, q1, q2 = solution
+        point_x = p1 * math.cos(time) + q1 * math.sin(time)
+        point_y = p2 * math.cos(time) + q2 * math.sin(time)
+        return {
+            "kind": "sinusoidal",
+            "summary": "Senoidal: la particular esperada es periodica.",
+            "point": {"x": clean_number(point_x), "y": clean_number(point_y)},
+            "formula": "Xp(t) = P cos(t) + Q sin(t)",
+        }
+
+    if forcing_type == "polynomial":
+        return {
+            "kind": "polynomial",
+            "summary": "Polinomica: se busca una particular polinomica del mismo grado, salvo resonancia.",
+            "point": empty_point,
+        }
+
+    if current_forcing is None:
+        return {"kind": "unknown", "summary": "No se pudo evaluar f(t) en el tiempo actual.", "point": empty_point}
+    return {
+        "kind": "custom",
+        "summary": "Manual: aplica variacion de constantes para obtener Xp(t).",
+        "point": empty_point,
+    }
+
+
+def nonhomogeneous_behavior(forcing_type: str, classification: dict[str, str], lambda_value: float, eigenvalues: list[dict[str, float]]) -> str:
+    if forcing_type == "constant":
+        return "Constante: preserva el comportamiento asintotico y desplaza la particular."
+    if forcing_type == "sinusoidal":
+        return "Periodica: produce respuesta particular oscilatoria."
+    if forcing_type == "polynomial":
+        return "Polinomica: puede dominar si el homogeneo decae."
+    if forcing_type == "exponential":
+        spectral = max((item["real"] for item in eigenvalues), default=0.0)
+        if lambda_value > spectral:
+            return "Exponencial: puede romper el comportamiento asintotico del homogeneo."
+        return "Exponencial: su peso se compara con los autovalores de A."
+    return f"Manual: se superpone a un homogeneo tipo {classification['type']}."
+
+
+def nonhomogeneous_field(
+    a: float,
+    b: float,
+    c: float,
+    d: float,
+    x_func: SafeExpression,
+    y_func: SafeExpression,
+    x: float,
+    y: float,
+    time: float,
+) -> tuple[float, float] | None:
+    forcing = forcing_at(x_func, y_func, time)
+    if forcing is None:
+        return None
+    return a * x + b * y + forcing[0], c * x + d * y + forcing[1]
+
+
+def rk4_nonhomogeneous_step(
+    a: float,
+    b: float,
+    c: float,
+    d: float,
+    x_func: SafeExpression,
+    y_func: SafeExpression,
+    x: float,
+    y: float,
+    time: float,
+    h: float,
+) -> tuple[float, float] | None:
+    def field(px: float, py: float, pt: float) -> tuple[float, float] | None:
+        return nonhomogeneous_field(a, b, c, d, x_func, y_func, px, py, pt)
+
+    k1 = field(x, y, time)
+    if k1 is None:
+        return None
+    k2 = field(x + 0.5 * h * k1[0], y + 0.5 * h * k1[1], time + 0.5 * h)
+    if k2 is None:
+        return None
+    k3 = field(x + 0.5 * h * k2[0], y + 0.5 * h * k2[1], time + 0.5 * h)
+    if k3 is None:
+        return None
+    k4 = field(x + h * k3[0], y + h * k3[1], time + h)
+    if k4 is None:
+        return None
+    return (
+        x + h * (k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0]) / 6.0,
+        y + h * (k1[1] + 2 * k2[1] + 2 * k3[1] + k4[1]) / 6.0,
+    )
+
+
+def sample_nonhomogeneous_vector_field(
+    a: float,
+    b: float,
+    c: float,
+    d: float,
+    x_func: SafeExpression,
+    y_func: SafeExpression,
+    x_range: tuple[float, float],
+    y_range: tuple[float, float],
+    time: float,
+    samples: int = 17,
+) -> list[dict[str, float]]:
+    points: list[dict[str, float]] = []
+    for i in range(samples):
+        x = x_range[0] + (x_range[1] - x_range[0]) * (i + 0.5) / samples
+        for j in range(samples):
+            y = y_range[0] + (y_range[1] - y_range[0]) * (j + 0.5) / samples
+            value = nonhomogeneous_field(a, b, c, d, x_func, y_func, x, y, time)
+            if value is None:
+                continue
+            vx, vy = value
+            if math.hypot(vx, vy) < 1e-12:
+                continue
+            points.append({"x": clean_number(x), "y": clean_number(y), "vx": clean_number(vx), "vy": clean_number(vy)})
+    return points
+
+
+def representative_nonhomogeneous_trajectories(
+    a: float,
+    b: float,
+    c: float,
+    d: float,
+    x_func: SafeExpression,
+    y_func: SafeExpression,
+    x_range: tuple[float, float],
+    y_range: tuple[float, float],
+    t_range: tuple[float, float],
+) -> list[list[dict[str, float]]]:
+    x_min, x_max = x_range
+    y_min, y_max = y_range
+    seeds = [
+        (x_min + 0.2 * (x_max - x_min), y_min + 0.2 * (y_max - y_min)),
+        (x_min + 0.2 * (x_max - x_min), y_min + 0.8 * (y_max - y_min)),
+        (x_min + 0.8 * (x_max - x_min), y_min + 0.2 * (y_max - y_min)),
+        (x_min + 0.8 * (x_max - x_min), y_min + 0.8 * (y_max - y_min)),
+        ((x_min + x_max) / 2.0, y_min + 0.25 * (y_max - y_min)),
+        ((x_min + x_max) / 2.0, y_min + 0.75 * (y_max - y_min)),
+        (x_min + 0.25 * (x_max - x_min), (y_min + y_max) / 2.0),
+        (x_min + 0.75 * (x_max - x_min), (y_min + y_max) / 2.0),
+    ]
+    steps = 240
+    h = (t_range[1] - t_range[0]) / steps
+    trajectories: list[list[dict[str, float]]] = []
+
+    def in_bounds(px: float, py: float) -> bool:
+        return x_min <= px <= x_max and y_min <= py <= y_max
+
+    for seed_x, seed_y in seeds:
+        x_value, y_value = seed_x, seed_y
+        time = t_range[0]
+        points = [{"x": clean_number(x_value), "y": clean_number(y_value)}]
+        for _ in range(steps):
+            next_point = rk4_nonhomogeneous_step(a, b, c, d, x_func, y_func, x_value, y_value, time, h)
+            if next_point is None:
+                break
+            x_value, y_value = next_point
+            time += h
+            if not in_bounds(x_value, y_value):
+                break
+            if len(points) % 3 == 0:
+                points.append({"x": clean_number(x_value), "y": clean_number(y_value)})
+            else:
+                points.append({"x": clean_number(x_value), "y": clean_number(y_value)})
+        if len(points) >= 2:
+            trajectories.append(points[::3])
+    return trajectories
+
+
+def nonhomogeneous_cases() -> list[dict[str, str]]:
+    return [
+        {"form": "x' = Ax + b", "particular": "Constante: A xp = -b."},
+        {"form": "x' = Ax + e^(lambda t)v", "particular": "Exponencial; puede aparecer t e^(lambda t) si hay resonancia."},
+        {"form": "x' = Ax + a cos(t) + b sin(t)", "particular": "Periodica cuando no hay resonancia."},
+        {"form": "x' = Ax + p(t)", "particular": "Polinomica del mismo grado, salvo resonancia."},
+    ]
+
+
+def nonhomogeneous2d_analysis(payload: dict[str, Any]) -> dict[str, Any]:
+    a, b, c, d, forcing_type, fx_expression, fy_expression, lambda_value, time, t_range, x_range, y_range = parse_nonhomogeneous2d_payload(
+        payload
+    )
+    x_func = SafeExpression(fx_expression, ("t",))
+    y_func = SafeExpression(fy_expression, ("t",))
+    homogeneous = linear2d_analysis({"a": a, "b": b, "c": c, "d": d})
+    behavior = nonhomogeneous_behavior(forcing_type, homogeneous["classification"], lambda_value, homogeneous["eigenvalues"])
+    particular = nonhomogeneous_particular(a, b, c, d, forcing_type, x_func, y_func, lambda_value, time)
+    current_forcing = forcing_at(x_func, y_func, time)
+
+    return {
+        "matrix": [[clean_number(a), clean_number(b)], [clean_number(c), clean_number(d)]],
+        "homogeneous": {
+            "classification": homogeneous["classification"],
+            "eigenvalues": homogeneous["eigenvalues"],
+            "eigenvectors": homogeneous["eigenvectors"],
+            "solution": homogeneous["solution"],
+        },
+        "forcing": {
+            "type": forcing_type,
+            "expressions": {"x": x_func.expression, "y": y_func.expression},
+            "value": None
+            if current_forcing is None
+            else {"x": clean_number(current_forcing[0]), "y": clean_number(current_forcing[1])},
+            "behavior": behavior,
+        },
+        "particular": particular,
+        "solutionInterpretation": "La solucion general suma el homogeneo asociado y una particular.",
+        "time": clean_number(time),
+        "tRange": list(t_range),
+        "xRange": list(x_range),
+        "yRange": list(y_range),
+        "vectorField": sample_nonhomogeneous_vector_field(a, b, c, d, x_func, y_func, x_range, y_range, time),
+        "trajectories": representative_nonhomogeneous_trajectories(a, b, c, d, x_func, y_func, x_range, y_range, t_range),
+        "cases": nonhomogeneous_cases(),
+    }
+
+
 def safe_eval(func: Callable[[float, float], float], x: float, r: float) -> float | None:
     try:
         value = func(x, r)
@@ -1337,6 +1705,7 @@ class SimulatorHandler(SimpleHTTPRequestHandler):
             self.path.startswith("/api/analyze")
             or self.path.startswith("/api/frame")
             or self.path.startswith("/api/linear2d")
+            or self.path.startswith("/api/nonhomogeneous2d")
             or self.path.startswith("/api/nonlinear2d")
         ):
             self.send_error(HTTPStatus.NOT_FOUND)
@@ -1347,6 +1716,8 @@ class SimulatorHandler(SimpleHTTPRequestHandler):
             payload = json.loads(raw.decode("utf-8") or "{}")
             if self.path.startswith("/api/nonlinear2d"):
                 result = nonlinear2d_analysis(payload)
+            elif self.path.startswith("/api/nonhomogeneous2d"):
+                result = nonhomogeneous2d_analysis(payload)
             elif self.path.startswith("/api/linear2d"):
                 result = linear2d_analysis(payload)
             elif self.path.startswith("/api/frame"):

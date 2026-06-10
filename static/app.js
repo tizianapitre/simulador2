@@ -19,12 +19,15 @@ const els = {
   errorBox: document.querySelector("#errorBox"),
   oneDTabButton: document.querySelector("#oneDTabButton"),
   linear2dTabButton: document.querySelector("#linear2dTabButton"),
+  nonhomogeneous2dTabButton: document.querySelector("#nonhomogeneous2dTabButton"),
   nonlinear2dTabButton: document.querySelector("#nonlinear2dTabButton"),
   oneDControls: document.querySelector("#oneDControls"),
   linear2dControls: document.querySelector("#linear2dControls"),
+  nonhomogeneous2dControls: document.querySelector("#nonhomogeneous2dControls"),
   nonlinear2dControls: document.querySelector("#nonlinear2dControls"),
   oneDWorkspace: document.querySelector("#oneDWorkspace"),
   linear2dWorkspace: document.querySelector("#linear2dWorkspace"),
+  nonhomogeneous2dWorkspace: document.querySelector("#nonhomogeneous2dWorkspace"),
   nonlinear2dWorkspace: document.querySelector("#nonlinear2dWorkspace"),
   linearAInput: document.querySelector("#linearAInput"),
   linearBInput: document.querySelector("#linearBInput"),
@@ -39,6 +42,29 @@ const els = {
   nullclineCanvas: document.querySelector("#nullclineCanvas"),
   linearPhaseCanvas: document.querySelector("#linearPhaseCanvas"),
   linearErrorBox: document.querySelector("#linearErrorBox"),
+  nonhomogeneousAInput: document.querySelector("#nonhomogeneousAInput"),
+  nonhomogeneousBInput: document.querySelector("#nonhomogeneousBInput"),
+  nonhomogeneousCInput: document.querySelector("#nonhomogeneousCInput"),
+  nonhomogeneousDInput: document.querySelector("#nonhomogeneousDInput"),
+  nonhomogeneousForcingSelect: document.querySelector("#nonhomogeneousForcingSelect"),
+  nonhomogeneousFxInput: document.querySelector("#nonhomogeneousFxInput"),
+  nonhomogeneousFyInput: document.querySelector("#nonhomogeneousFyInput"),
+  nonhomogeneousLambdaInput: document.querySelector("#nonhomogeneousLambdaInput"),
+  nonhomogeneousTimeInput: document.querySelector("#nonhomogeneousTimeInput"),
+  nonhomogeneousTMaxInput: document.querySelector("#nonhomogeneousTMaxInput"),
+  nonhomogeneousXMinInput: document.querySelector("#nonhomogeneousXMinInput"),
+  nonhomogeneousXMaxInput: document.querySelector("#nonhomogeneousXMaxInput"),
+  nonhomogeneousYMinInput: document.querySelector("#nonhomogeneousYMinInput"),
+  nonhomogeneousYMaxInput: document.querySelector("#nonhomogeneousYMaxInput"),
+  nonhomogeneousCalculateButton: document.querySelector("#nonhomogeneousCalculateButton"),
+  nonhomogeneousHomogeneousSummary: document.querySelector("#nonhomogeneousHomogeneousSummary"),
+  nonhomogeneousForcingSummary: document.querySelector("#nonhomogeneousForcingSummary"),
+  nonhomogeneousParticularSummary: document.querySelector("#nonhomogeneousParticularSummary"),
+  nonhomogeneousSolutionSummary: document.querySelector("#nonhomogeneousSolutionSummary"),
+  nonhomogeneousEigenList: document.querySelector("#nonhomogeneousEigenList"),
+  nonhomogeneousCasesList: document.querySelector("#nonhomogeneousCasesList"),
+  nonhomogeneousPhaseCanvas: document.querySelector("#nonhomogeneousPhaseCanvas"),
+  nonhomogeneousErrorBox: document.querySelector("#nonhomogeneousErrorBox"),
   nonlinearXExpressionInput: document.querySelector("#nonlinearXExpressionInput"),
   nonlinearYExpressionInput: document.querySelector("#nonlinearYExpressionInput"),
   nonlinearXMinInput: document.querySelector("#nonlinearXMinInput"),
@@ -68,6 +94,7 @@ const colors = {
   eigenV1: "#0ea5a4",
   eigenV2: "#e11d48",
   vector: "#87959a",
+  particular: "#f97316",
   text: "#243033",
 };
 
@@ -83,6 +110,7 @@ let frameInFlight = false;
 let queuedFrameParameter = null;
 let activeTab = "oneD";
 let linear2dResult = null;
+let nonhomogeneous2dResult = null;
 let nonlinear2dResult = null;
 
 function formatNumber(value) {
@@ -118,6 +146,11 @@ function setLinearError(message) {
   els.linearErrorBox.textContent = message || "";
 }
 
+function setNonhomogeneousError(message) {
+  els.nonhomogeneousErrorBox.hidden = !message;
+  els.nonhomogeneousErrorBox.textContent = message || "";
+}
+
 function setNonlinearError(message) {
   els.nonlinearErrorBox.hidden = !message;
   els.nonlinearErrorBox.textContent = message || "";
@@ -131,12 +164,15 @@ function setActiveTab(tab) {
   [
     [els.oneDTabButton, tab === "oneD"],
     [els.linear2dTabButton, tab === "linear2d"],
+    [els.nonhomogeneous2dTabButton, tab === "nonhomogeneous2d"],
     [els.nonlinear2dTabButton, tab === "nonlinear2d"],
     [els.oneDControls, tab === "oneD"],
     [els.linear2dControls, tab === "linear2d"],
+    [els.nonhomogeneous2dControls, tab === "nonhomogeneous2d"],
     [els.nonlinear2dControls, tab === "nonlinear2d"],
     [els.oneDWorkspace, tab === "oneD"],
     [els.linear2dWorkspace, tab === "linear2d"],
+    [els.nonhomogeneous2dWorkspace, tab === "nonhomogeneous2d"],
     [els.nonlinear2dWorkspace, tab === "nonlinear2d"],
   ].forEach(([element, isActive]) => {
     element.classList.toggle("active", isActive);
@@ -147,6 +183,12 @@ function setActiveTab(tab) {
       renderLinear2d(linear2dResult);
     } else {
       calculateLinear2d().catch((error) => setLinearError(error.message));
+    }
+  } else if (tab === "nonhomogeneous2d") {
+    if (nonhomogeneous2dResult) {
+      renderNonhomogeneous2d(nonhomogeneous2dResult);
+    } else {
+      calculateNonhomogeneous2d().catch((error) => setNonhomogeneousError(error.message));
     }
   } else if (tab === "nonlinear2d") {
     if (nonlinear2dResult) {
@@ -770,6 +812,216 @@ function renderLinear2d(result) {
   renderLinearPhase(result);
 }
 
+function nonhomogeneous2dPayload() {
+  const entries = [
+    ["a", els.nonhomogeneousAInput],
+    ["b", els.nonhomogeneousBInput],
+    ["c", els.nonhomogeneousCInput],
+    ["d", els.nonhomogeneousDInput],
+  ];
+  const values = {};
+  entries.forEach(([key, input]) => {
+    const value = Number(input.value);
+    if (!Number.isFinite(value)) {
+      throw new Error("Todos los valores de la matriz deben ser numericos.");
+    }
+    values[key] = value;
+  });
+
+  const currentTime = Number(els.nonhomogeneousTimeInput.value);
+  const tMax = Number(els.nonhomogeneousTMaxInput.value);
+  const xRange = [Number(els.nonhomogeneousXMinInput.value), Number(els.nonhomogeneousXMaxInput.value)];
+  const yRange = [Number(els.nonhomogeneousYMinInput.value), Number(els.nonhomogeneousYMaxInput.value)];
+  const lambda = Number(els.nonhomogeneousLambdaInput.value);
+  if (![currentTime, tMax, lambda, ...xRange, ...yRange].every(Number.isFinite)) {
+    throw new Error("Tiempo, lambda y rangos deben ser numericos.");
+  }
+  if (tMax <= 0) {
+    throw new Error("t max debe ser mayor que cero.");
+  }
+  if (xRange[0] >= xRange[1] || yRange[0] >= yRange[1]) {
+    throw new Error("Cada rango debe tener minimo menor que maximo.");
+  }
+  if (!els.nonhomogeneousFxInput.value.trim() || !els.nonhomogeneousFyInput.value.trim()) {
+    throw new Error("Ingresa las dos componentes de f(t).");
+  }
+
+  return {
+    ...values,
+    forcingType: els.nonhomogeneousForcingSelect.value,
+    fxExpression: els.nonhomogeneousFxInput.value,
+    fyExpression: els.nonhomogeneousFyInput.value,
+    lambda,
+    time: currentTime,
+    tRange: [0, tMax],
+    xRange,
+    yRange,
+  };
+}
+
+async function calculateNonhomogeneous2d() {
+  setNonhomogeneousError("");
+  const response = await fetch("/api/nonhomogeneous2d", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(nonhomogeneous2dPayload()),
+  });
+  const result = await response.json();
+  if (!response.ok) {
+    throw new Error(result.error || "No se pudo analizar el sistema no homogeneo.");
+  }
+  nonhomogeneous2dResult = result;
+  renderNonhomogeneous2d(result);
+}
+
+function scheduleNonhomogeneous2d() {
+  window.clearTimeout(debounceHandle);
+  debounceHandle = window.setTimeout(() => {
+    calculateNonhomogeneous2d().catch((error) => setNonhomogeneousError(error.message));
+  }, 220);
+}
+
+function applyForcingPreset() {
+  const type = els.nonhomogeneousForcingSelect.value;
+  const presets = {
+    constant: ["1", "0", "0"],
+    exponential: ["exp(0.5*t)", "0", "0.5"],
+    sinusoidal: ["cos(t)", "sin(t)", "0"],
+    polynomial: ["t", "t**2", "0"],
+    custom: [els.nonhomogeneousFxInput.value, els.nonhomogeneousFyInput.value, els.nonhomogeneousLambdaInput.value],
+  };
+  const [fx, fy, lambda] = presets[type] || presets.custom;
+  els.nonhomogeneousFxInput.value = fx;
+  els.nonhomogeneousFyInput.value = fy;
+  els.nonhomogeneousLambdaInput.value = lambda;
+}
+
+function renderNonhomogeneous2d(result) {
+  els.nonhomogeneousHomogeneousSummary.replaceChildren(
+    pill(result.homogeneous.classification.type, result.homogeneous.classification.stability),
+    pill(result.homogeneous.classification.detail),
+  );
+
+  els.nonhomogeneousForcingSummary.replaceChildren(
+    pill(`f(t) = (${result.forcing.expressions.x}, ${result.forcing.expressions.y})`),
+    pill(result.forcing.behavior),
+    pill(`t = ${formatNumber(result.time)}`),
+  );
+
+  els.nonhomogeneousParticularSummary.replaceChildren();
+  els.nonhomogeneousParticularSummary.append(pill(result.particular.summary, result.particular.kind));
+  if (result.particular.point) {
+    els.nonhomogeneousParticularSummary.append(
+      pill(`xp = (${formatNumber(result.particular.point.x)}, ${formatNumber(result.particular.point.y)})`),
+    );
+  }
+
+  els.nonhomogeneousSolutionSummary.replaceChildren(
+    pill("X(t) = Xh(t) + Xp(t)"),
+    pill(result.solutionInterpretation),
+  );
+
+  els.nonhomogeneousEigenList.replaceChildren();
+  result.homogeneous.eigenvectors.forEach((item, index) => {
+    const row = document.createElement("div");
+    row.className = "result-row";
+    const multiplicity = item.multiplicity > 1 ? `, multiplicidad ${item.multiplicity}` : "";
+    const title = document.createElement("strong");
+    title.textContent = `lambda ${index + 1} = ${item.eigenvalueText}${multiplicity}`;
+    const vector = document.createElement("span");
+    vector.textContent = `v = ${item.vectorText}`;
+    row.append(title, vector);
+    els.nonhomogeneousEigenList.append(row);
+  });
+
+  els.nonhomogeneousCasesList.replaceChildren();
+  result.cases.forEach((item) => {
+    const row = document.createElement("div");
+    row.className = "result-row";
+    const title = document.createElement("strong");
+    title.textContent = item.form;
+    const detail = document.createElement("span");
+    detail.textContent = item.particular;
+    row.append(title, detail);
+    els.nonhomogeneousCasesList.append(row);
+  });
+
+  renderNonhomogeneousPhase(result);
+}
+
+function renderNonhomogeneousPhase(result) {
+  const { ctx, plot, xScale, yScale, xRange, yRange } = drawPlanarGrid(
+    els.nonhomogeneousPhaseCanvas,
+    result.xRange,
+    result.yRange,
+  );
+  const spanX = xRange[1] - xRange[0];
+  const spanY = yRange[1] - yRange[0];
+  const arrowLength = Math.min(spanX, spanY) / 30;
+
+  result.vectorField.forEach((point) => {
+    const norm = Math.hypot(point.vx, point.vy);
+    if (norm < 1e-12) return;
+    const dx = (point.vx / norm) * arrowLength;
+    const dy = (point.vy / norm) * arrowLength;
+    drawVectorArrow(
+      ctx,
+      xScale(point.x - dx / 2),
+      yScale(point.y - dy / 2),
+      xScale(point.x + dx / 2),
+      yScale(point.y + dy / 2),
+      colors.vector,
+      1.05,
+    );
+  });
+
+  result.trajectories.forEach((trajectory) => {
+    if (trajectory.length < 2) return;
+    ctx.save();
+    ctx.strokeStyle = colors.trajectory;
+    ctx.lineWidth = 2.3;
+    ctx.globalAlpha = 0.9;
+    ctx.beginPath();
+    trajectory.forEach((point, index) => {
+      const px = xScale(point.x);
+      const py = yScale(point.y);
+      if (index === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    });
+    ctx.stroke();
+    ctx.restore();
+
+    const end = trajectory[trajectory.length - 1];
+    const prev = trajectory[Math.max(0, trajectory.length - 4)];
+    drawVectorArrow(ctx, xScale(prev.x), yScale(prev.y), xScale(end.x), yScale(end.y), colors.trajectory, 1.5);
+  });
+
+  if (result.particular.point) {
+    const point = result.particular.point;
+    ctx.save();
+    ctx.fillStyle = result.particular.kind === "constant" ? colors.unstable : colors.particular;
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.arc(xScale(point.x), yScale(point.y), 7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = colors.text;
+    ctx.font = "700 12px Inter, system-ui, sans-serif";
+    ctx.textAlign = point.x > (xRange[0] + xRange[1]) / 2 ? "right" : "left";
+    ctx.textBaseline = point.y > (yRange[0] + yRange[1]) / 2 ? "bottom" : "top";
+    ctx.fillText("xp", xScale(point.x) + (ctx.textAlign === "right" ? -10 : 10), yScale(point.y) + 10);
+    ctx.restore();
+  }
+
+  ctx.save();
+  ctx.fillStyle = colors.text;
+  ctx.font = "12px Inter, system-ui, sans-serif";
+  ctx.textAlign = "left";
+  ctx.fillText(`Campo evaluado en t = ${formatNumber(result.time)}`, plot.left + 8, plot.top + 16);
+  ctx.restore();
+}
+
 function escapeHtml(value) {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -1303,6 +1555,9 @@ window.addEventListener("resize", () => {
   if (activeTab === "linear2d" && linear2dResult) {
     renderLinear2d(linear2dResult);
   }
+  if (activeTab === "nonhomogeneous2d" && nonhomogeneous2dResult) {
+    renderNonhomogeneous2d(nonhomogeneous2dResult);
+  }
   if (activeTab === "nonlinear2d" && nonlinear2dResult) {
     renderNonlinear2d(nonlinear2dResult);
   }
@@ -1310,6 +1565,7 @@ window.addEventListener("resize", () => {
 
 els.oneDTabButton.addEventListener("click", () => setActiveTab("oneD"));
 els.linear2dTabButton.addEventListener("click", () => setActiveTab("linear2d"));
+els.nonhomogeneous2dTabButton.addEventListener("click", () => setActiveTab("nonhomogeneous2d"));
 els.nonlinear2dTabButton.addEventListener("click", () => setActiveTab("nonlinear2d"));
 
 els.linearCalculateButton.addEventListener("click", () => {
@@ -1322,6 +1578,38 @@ els.linearCalculateButton.addEventListener("click", () => {
       calculateLinear2d().catch((error) => setLinearError(error.message));
     }
   });
+});
+
+[
+  els.nonhomogeneousAInput,
+  els.nonhomogeneousBInput,
+  els.nonhomogeneousCInput,
+  els.nonhomogeneousDInput,
+  els.nonhomogeneousFxInput,
+  els.nonhomogeneousFyInput,
+  els.nonhomogeneousLambdaInput,
+  els.nonhomogeneousTimeInput,
+  els.nonhomogeneousTMaxInput,
+  els.nonhomogeneousXMinInput,
+  els.nonhomogeneousXMaxInput,
+  els.nonhomogeneousYMinInput,
+  els.nonhomogeneousYMaxInput,
+].forEach((input) => {
+  input.addEventListener("input", scheduleNonhomogeneous2d);
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      calculateNonhomogeneous2d().catch((error) => setNonhomogeneousError(error.message));
+    }
+  });
+});
+
+els.nonhomogeneousForcingSelect.addEventListener("change", () => {
+  applyForcingPreset();
+  scheduleNonhomogeneous2d();
+});
+
+els.nonhomogeneousCalculateButton.addEventListener("click", () => {
+  calculateNonhomogeneous2d().catch((error) => setNonhomogeneousError(error.message));
 });
 
 [els.nonlinearXExpressionInput, els.nonlinearYExpressionInput].forEach((input) => {

@@ -60,6 +60,50 @@ class Linear2DAnalysisTests(unittest.TestCase):
             server.linear2d_analysis({"a": "x", "b": 0, "c": 0, "d": 1})
 
 
+class Nonhomogeneous2DAnalysisTests(unittest.TestCase):
+    def test_constant_forcing_shifts_equilibrium(self) -> None:
+        result = server.nonhomogeneous2d_analysis(
+            {
+                "a": -1,
+                "b": 0,
+                "c": 0,
+                "d": -2,
+                "forcingType": "constant",
+                "fxExpression": "1",
+                "fyExpression": "2",
+                "time": 0,
+                "tRange": [0, 4],
+                "xRange": [-3, 3],
+                "yRange": [-3, 3],
+            }
+        )
+        self.assertEqual(result["particular"]["kind"], "constant")
+        self.assertAlmostEqual(result["particular"]["point"]["x"], 1.0)
+        self.assertAlmostEqual(result["particular"]["point"]["y"], 1.0)
+        self.assertEqual(result["homogeneous"]["classification"]["type"], "nodo estable")
+
+    def test_exponential_forcing_builds_particular_point(self) -> None:
+        result = server.nonhomogeneous2d_analysis(
+            {
+                "a": -1,
+                "b": 0,
+                "c": 0,
+                "d": -2,
+                "forcingType": "exponential",
+                "fxExpression": "exp(t)",
+                "fyExpression": "0",
+                "lambda": 1,
+                "time": 0,
+                "tRange": [0, 2],
+                "xRange": [-3, 3],
+                "yRange": [-3, 3],
+            }
+        )
+        self.assertEqual(result["particular"]["kind"], "exponential")
+        self.assertAlmostEqual(result["particular"]["point"]["x"], 0.5)
+        self.assertAlmostEqual(result["particular"]["point"]["y"], 0.0)
+
+
 class Nonlinear2DAnalysisTests(unittest.TestCase):
     def test_finds_predator_prey_equilibrium_and_nullclines(self) -> None:
         result = server.nonlinear2d_analysis(

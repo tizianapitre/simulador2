@@ -20,6 +20,7 @@
         <nav class="tab-nav" aria-label="Secciones">
           <button id="oneDTabButton" class="tab-button active" type="button" data-tab="oneD">1D autonomo</button>
           <button id="linear2dTabButton" class="tab-button" type="button" data-tab="linear2d">Sistemas 2D</button>
+          <button id="nonhomogeneous2dTabButton" class="tab-button" type="button" data-tab="nonhomogeneous2d">No homogeneos</button>
           <button id="nonlinear2dTabButton" class="tab-button" type="button" data-tab="nonlinear2d">No lineales</button>
         </nav>
 
@@ -108,6 +109,87 @@
             <p>dx/dt = ax + by</p>
             <p>dy/dt = cx + dy</p>
             <p>Rango inicial del plano: -5 <= x,y <= 5.</p>
+          </section>
+        </div>
+
+        <div id="nonhomogeneous2dControls" class="tab-view">
+          <section class="panel">
+            <h2>Matriz A</h2>
+            <div class="matrix-input-grid" aria-label="Coeficientes de la matriz no homogenea">
+              <label class="field">
+                <span>a</span>
+                <input id="nonhomogeneousAInput" type="number" step="0.1" value="-1" />
+              </label>
+              <label class="field">
+                <span>b</span>
+                <input id="nonhomogeneousBInput" type="number" step="0.1" value="0" />
+              </label>
+              <label class="field">
+                <span>c</span>
+                <input id="nonhomogeneousCInput" type="number" step="0.1" value="0" />
+              </label>
+              <label class="field">
+                <span>d</span>
+                <input id="nonhomogeneousDInput" type="number" step="0.1" value="-2" />
+              </label>
+            </div>
+          </section>
+
+          <section class="panel">
+            <h2>Termino f(t)</h2>
+            <label class="field">
+              <span>Forma</span>
+              <select id="nonhomogeneousForcingSelect">
+                <option value="constant">Constante</option>
+                <option value="exponential">Exponencial</option>
+                <option value="sinusoidal">Senoidal</option>
+                <option value="polynomial">Polinomica</option>
+                <option value="custom">Manual</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>f1(t)</span>
+              <input id="nonhomogeneousFxInput" spellcheck="false" autocomplete="off" value="1" />
+            </label>
+            <label class="field">
+              <span>f2(t)</span>
+              <input id="nonhomogeneousFyInput" spellcheck="false" autocomplete="off" value="0" />
+            </label>
+            <label class="field">
+              <span>lambda</span>
+              <input id="nonhomogeneousLambdaInput" type="number" step="0.1" value="0" />
+            </label>
+            <button id="nonhomogeneousCalculateButton" type="button">Calcular</button>
+          </section>
+
+          <section class="panel">
+            <h2>Tiempo y plano</h2>
+            <div class="two-col">
+              <label class="field">
+                <span>t</span>
+                <input id="nonhomogeneousTimeInput" type="number" step="0.1" value="0" />
+              </label>
+              <label class="field">
+                <span>t max</span>
+                <input id="nonhomogeneousTMaxInput" type="number" step="0.25" value="6" />
+              </label>
+              <label class="field">
+                <span>x min</span>
+                <input id="nonhomogeneousXMinInput" type="number" step="0.25" value="-5" />
+              </label>
+              <label class="field">
+                <span>x max</span>
+                <input id="nonhomogeneousXMaxInput" type="number" step="0.25" value="5" />
+              </label>
+              <label class="field">
+                <span>y min</span>
+                <input id="nonhomogeneousYMinInput" type="number" step="0.25" value="-5" />
+              </label>
+              <label class="field">
+                <span>y max</span>
+                <input id="nonhomogeneousYMaxInput" type="number" step="0.25" value="5" />
+              </label>
+            </div>
           </section>
         </div>
 
@@ -253,6 +335,59 @@
           </section>
 
           <p id="linearErrorBox" class="error-box" hidden></p>
+        </div>
+
+        <div id="nonhomogeneous2dWorkspace" class="tab-view workspace-view">
+          <section class="status-strip nonhomogeneous-status" aria-live="polite">
+            <div>
+              <span class="eyebrow">Homogeneo asociado</span>
+              <div id="nonhomogeneousHomogeneousSummary" class="summary-list"></div>
+            </div>
+            <div>
+              <span class="eyebrow">Termino independiente</span>
+              <div id="nonhomogeneousForcingSummary" class="summary-list"></div>
+            </div>
+            <div>
+              <span class="eyebrow">Particular</span>
+              <div id="nonhomogeneousParticularSummary" class="summary-list"></div>
+            </div>
+            <div>
+              <span class="eyebrow">Solucion</span>
+              <div id="nonhomogeneousSolutionSummary" class="summary-list"></div>
+            </div>
+          </section>
+
+          <section class="linear-details-grid">
+            <article class="chart-panel result-panel">
+              <div class="chart-header">
+                <h2>Autovalores de A</h2>
+              </div>
+              <div id="nonhomogeneousEigenList" class="result-list"></div>
+            </article>
+
+            <article class="chart-panel result-panel">
+              <div class="chart-header">
+                <h2>Casos de f(t)</h2>
+              </div>
+              <div id="nonhomogeneousCasesList" class="result-list compact-result-list"></div>
+            </article>
+          </section>
+
+          <section class="chart-grid nonhomogeneous-chart-grid">
+            <article class="chart-panel">
+              <div class="chart-header">
+                <h2>Campo en t y trayectorias</h2>
+                <div class="legend">
+                  <span><i class="line trajectory"></i>trayectorias</span>
+                  <span><i class="dot particular-dot"></i>xp(t)</span>
+                  <span><i class="dot equilibrium-dot"></i>equilibrio</span>
+                </div>
+              </div>
+              <canvas id="nonhomogeneousPhaseCanvas" width="960" height="620"></canvas>
+            </article>
+          </section>
+
+          <p id="nonhomogeneousErrorBox" class="error-box" hidden></p>
         </div>
 
         <div id="nonlinear2dWorkspace" class="tab-view workspace-view">
